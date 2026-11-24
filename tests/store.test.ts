@@ -71,6 +71,17 @@ describe('multi-video project documents', () => {
     expect(catalogSchema.safeParse({ ...catalog, videos: [{ ...v, cues: [v.cues[0], v.cues[0]] }] }).success).toBe(false);
     expect((await Store.open(a.root)).snapshot().catalog).toEqual(catalog);
   });
+  it('normalizes imported pause points into chronological order for preview and timeline editing', async () => {
+    const a = await workspace(), b = await workspace(), v = await video(a.store);
+    v.cues = [
+      { id: randomUUID(), name: 'Later', time: 3 },
+      { id: randomUUID(), name: 'Earlier', time: 1 }
+    ];
+    const file = path.join(a.root, 'unordered.demosim');
+    await archive(file, projectCatalog([v]), v);
+    await b.store.importBundle(file, false, new AbortController().signal, () => {});
+    expect(b.store.snapshot().catalog.videos[0].cues.map(cue => cue.time)).toEqual([1, 3]);
+  });
   it('cleans a cancelled media copy and leaves the original intact', async () => {
     const a = await workspace(), source = path.join(a.root, 'source.mp4');
     await fs.writeFile(source, 'source');

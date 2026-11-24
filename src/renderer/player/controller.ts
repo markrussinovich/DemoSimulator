@@ -66,7 +66,8 @@ export class PlaybackController {
     });
     listen('playing', () => {
       this.buffering = false;
-      if (this.state !== 'playing' || !this.focused || !this.focus()) video.pause();
+      if (this.state !== 'playing') video.pause();
+      else if (!this.focused || !this.focus()) this.pause('focus-paused');
       else this.clearTimeout();
       this.notify();
     });
@@ -95,7 +96,7 @@ export class PlaybackController {
       await this.video.play();
       if (token !== this.generation || this.disposed) return;
       if (!this.focused || !this.focus()) {
-        this.video.pause(); return;
+        this.pause('focus-paused'); return;
       }
       this.clearTimeout();
     } catch (error) {

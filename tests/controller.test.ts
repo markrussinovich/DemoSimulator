@@ -51,6 +51,23 @@ describe('presenter transitions', () => {
     expect(c.state).toBe('focus-paused'); expect(video.pause).toHaveBeenCalled();
     c.refocus(); expect(c.state).toBe('focus-paused'); c.dispose();
   });
+  it.each(['playing event', 'play completion'])('records focus loss detected by %s before the blur notification', async source => {
+    const video = new FakeVideo();
+    let focused = true;
+    const c = new PlaybackController(video as unknown as HTMLVideoElement, projects, () => {}, () => {}, () => focused);
+    c.start(); video.dispatchEvent(new Event('loadeddata'));
+    let resolve!: () => void;
+    video.play.mockImplementationOnce(() => new Promise<void>(r => { resolve = r; }));
+    const playing = c.input('space');
+    focused = false;
+    if (source === 'playing event') video.dispatchEvent(new Event('playing'));
+    resolve(); await playing;
+    expect(c.state).toBe('focus-paused');
+    focused = true; c.refocus();
+    await c.input('space');
+    expect(c.state).toBe('playing');
+    c.dispose();
+  });
   it('stops input during loading/seeking and only Space pauses active playback', () => {
     expect(inputAction('loading', 'space')).toBe('none');
     expect(inputAction('seeking', 'space')).toBe('none');

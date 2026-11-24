@@ -9,7 +9,7 @@ export const videoSchema = z.object({
   media: z.string().regex(/^[a-f0-9-]+\.(mp4|webm)$/),
   duration: z.number().finite().positive(),
   width: z.number().int().positive(), height: z.number().int().positive(),
-  cues: z.array(cueSchema).max(10000)
+  cues: z.array(cueSchema).max(10000).transform(cues => cues.sort((a, b) => a.time - b.time))
 }).strict().superRefine((p, ctx) => {
   const times = new Set<number>();
   const ids = new Set<string>();

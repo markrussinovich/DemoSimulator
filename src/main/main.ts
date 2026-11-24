@@ -133,7 +133,7 @@ if (locked) app.whenReady().then(async () => {
     const catalog = catalogSchema.parse(value);
     const project = catalog.projects.find(project => project.id === id);
     if (!project || typeof saveAs !== 'boolean') throw new Error('Invalid project save.');
-    let destination = projectFile;
+    let destination = id === selectedProjectId ? projectFile : undefined;
     if (!destination || saveAs) {
       const result = await dialog.showSaveDialog(window, {
         title: 'Save demo project', defaultPath: destination ?? `${project.name.replace(/[<>:"/\\|?*]/g, '_')}.demosim`,

@@ -215,7 +215,7 @@ export function App() {
         <button className="primary" disabled={busy || !ordered.length} onClick={() => void play(ordered)}>Play project</button>
         <label className="fullscreen-option">Fullscreen<input aria-label="Fullscreen presentation" type="checkbox" checked={fullscreen} disabled={busy} onChange={event => setFullscreen(event.target.checked)} /></label>
       </div>
-      {catalog.projects.length > 1 && <div className="legacy-projects"><label>Recovered project <select aria-label="Recovered project" value={projectId} onChange={event => {
+      {catalog.projects.length > 1 && <div className="legacy-projects"><label>Recovered project <select aria-label="Recovered project" value={projectId} disabled={busy} onChange={event => {
         preview.current?.pause(); setProjectId(event.target.value); setSelectedIndex(0);
         setDocument(current => current ? { ...current, filePath: undefined } : null);
         setCueId(''); setTime(0);
@@ -252,7 +252,11 @@ export function App() {
             <button className="danger" disabled={busy || !video} onClick={() => {
               if (!window.confirm(`Remove "${video!.name}" from this project?`)) return;
               const next = project.videos.filter((_, index) => index !== selectedIndex);
-              setCatalog(current => ({ ...current, projects: current.projects.map(p => p.id === project.id ? { ...p, videos: next } : p) }));
+              setCatalog(current => {
+                const projects = current.projects.map(p => p.id === project.id ? { ...p, videos: next } : p);
+                const referenced = new Set(projects.flatMap(p => p.videos));
+                return { ...current, projects, videos: current.videos.filter(video => referenced.has(video.id)) };
+              });
               setSelectedIndex(Math.max(0, Math.min(selectedIndex, next.length - 1))); setCueId(''); setTime(0);
             }}>Remove video</button>
           </div>

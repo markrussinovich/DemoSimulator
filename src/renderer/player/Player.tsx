@@ -26,6 +26,7 @@ export function Player({ projects, exit }: { projects: Video[]; exit: () => void
     const key = (event: KeyboardEvent) => {
       if (event.repeat) return;
       if (event.code === 'Escape') { event.preventDefault(); exit(); }
+      if (event.target instanceof HTMLElement && event.target.closest('button')) return;
       if (event.code === 'Space' || event.code === 'Enter') {
         event.preventDefault(); void c.input(event.code === 'Space' ? 'space' : 'enter');
       }

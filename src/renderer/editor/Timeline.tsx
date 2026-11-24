@@ -7,8 +7,9 @@ type Props = {
   move: (id: string, time: number) => void; remove: (id: string) => void;
 };
 export const formatTime = (time: number) => {
-  const minutes = Math.floor(time / 60);
-  return `${minutes}:${(time % 60).toFixed(3).padStart(6, '0')}`;
+  const milliseconds = Math.round(time * 1000);
+  const minutes = Math.floor(milliseconds / 60000);
+  return `${minutes}:${((milliseconds % 60000) / 1000).toFixed(3).padStart(6, '0')}`;
 };
 export function Timeline({ duration, time, cues, selected, disabled, select, seek, move, remove }: Props) {
   const track = useRef<HTMLDivElement>(null);
