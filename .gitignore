@@ -1,0 +1,12 @@
+node_modules/
+dist/
+release/
+test-results/
+playwright-report/
+Samples/
+test-e2e-*/
+*.demosim
+*.log
+.env
+.env.*
+!.env.example

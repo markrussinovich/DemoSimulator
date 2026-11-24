@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-J58UBalZcJHrtIwJrzd4avduyvlO5Zl3lnhrswQfM/o='; style-src 'self' 'unsafe-inline'; media-src 'self' demo-media: blob:; img-src 'self' data: blob:; connect-src 'self' demo-media:; object-src 'none'; base-uri 'none'">
+  <script>
+    (() => {
+      const param = new URLSearchParams(window.location.search).get("clawpilotTheme");
+      const theme =
+        param || (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+      document.documentElement.setAttribute("data-theme", theme);
+    })();
+  </script>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Demo Simulator</title>
+</head>
+<body><div id="root"></div><script type="module" src="./main.tsx"></script></body>
+</html>
