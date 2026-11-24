@@ -162,6 +162,15 @@ test('blue markers and bold buttons remain legible, the empty inspector aligns, 
   await expect.poll(() => page.evaluate(() => innerWidth)).toBe(1280);
 });
 test('preview clicks and Play honor pauses, Reset rearms them, arrows step, and clicking away clears selection', async () => {
+  const playButton = page.getByRole('button', { name: 'Play preview', exact: true });
+  await expect(playButton.locator('svg')).toHaveCount(1);
+  await expect(playButton).toHaveText('');
+  await expect(page.getByRole('button', { name: 'Reset', exact: true }).locator('svg')).toHaveCount(1);
+  await expect(page.getByRole('button', { name: 'Reset', exact: true })).toHaveText('');
+  await expect(page.getByRole('button', { name: 'Previous frame', exact: true })).toContainText('1 Frame');
+  await expect(page.getByRole('button', { name: 'Next frame', exact: true })).toContainText('1 Frame');
+  const playIcon = await playButton.locator('path').getAttribute('d');
+  const playSize = (await playButton.boundingBox())!;
   const marker = page.getByRole('slider', { name: /^Pause point 1:/ });
   await marker.click();
   await expect(marker).toHaveClass(/selected/);
@@ -181,7 +190,12 @@ test('preview clicks and Play honor pauses, Reset rearms them, arrows step, and 
   expect(await page.getByTestId('timeline').evaluate(element => getComputedStyle(element).cursor)).toBe('text');
   expect(await page.locator('.timeline-rail').evaluate(element => element.getBoundingClientRect().height)).toBeGreaterThan(4);
   await page.locator('.preview').click();
-  await expect(page.getByRole('button', { name: 'Pause preview', exact: true })).toBeVisible();
+  const pauseButton = page.getByRole('button', { name: 'Pause preview', exact: true });
+  await expect(pauseButton).toBeVisible();
+  await expect(pauseButton).toHaveText('');
+  expect(await pauseButton.locator('path').getAttribute('d')).not.toBe(playIcon);
+  const pauseSize = (await pauseButton.boundingBox())!;
+  expect({ width: pauseSize.width, height: pauseSize.height }).toEqual({ width: playSize.width, height: playSize.height });
   await expect.poll(() => page.locator('.preview').evaluate((video: HTMLVideoElement) => video.currentTime)).toBeCloseTo(1, 3);
   await expect(page.locator('.preview')).toHaveJSProperty('paused', true);
   expect(await frameSignature('.preview')).toBe(referenceFrames[1]);

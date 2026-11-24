@@ -64,9 +64,9 @@ Projects are cached locally for media playback and reopening after launch. These
 - **Drag a marker off the timeline and release** to delete it. Escape cancels a drag. A click selects without changing its time.
 - Marker keyboard controls: Left/Right moves 33 ms; Shift+Left/Right moves one second; Delete/Backspace deletes. **Delete pause** is also available.
 - Dense markers narrow to avoid covering neighbors. Every marker can also be selected from the pause-point dropdown.
-- **Play / Pause** starts or pauses the editor preview. Clicking the preview also toggles playback. Preview honors authored pause points; Play or another click continues past the held point.
-- **Reset**, to the left of Play/Pause, stops the preview and returns to the beginning. Pauses fire again when replayed after Reset or seeking backward.
-- The filled left/right arrowheads step backward/forward approximately one frame. Exact stepping is not guaranteed, especially for variable-frame-rate inputs.
+- The **Play triangle / Pause bars** button starts or pauses the editor preview. Clicking the preview also toggles playback. Preview honors authored pause points; Play or another click continues past the held point.
+- **Reset** (a left arrowhead against a vertical line), to the left of Play/Pause, stops the preview and returns to the beginning. Pauses fire again when replayed after Reset or seeking backward.
+- The directional **1 Frame** buttons step backward/forward approximately one frame. Exact stepping is not guaranteed, especially for variable-frame-rate inputs.
 - Click outside a marker or its inspector to clear the pause selection. Editing the name/time in the inspector keeps the selection.
 
 The preview scales to the available window instead of pushing controls below it. Video margins are black in both the editor and player, in light and dark themes. The video list scrolls within its panel; there are no Prev/Next page controls. Pause details use a single inspector rather than an ever-growing form. All editor controls fit without page scrolling at the supported minimum window size.

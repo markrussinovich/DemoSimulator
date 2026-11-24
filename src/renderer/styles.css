@@ -124,6 +124,7 @@ input[type="checkbox"] { accent-color: var(--cp-accent); width: 20px; height: 20
 .pause-marker.removing { opacity: .5; background: var(--cp-danger); color: var(--cp-accent-fg); }
 .timeline-panel.deleting .timeline-help { color: var(--cp-danger); }
 .transport { display: flex; align-items: center; gap: 8px; padding: 12px 0; flex: none; }
+.transport button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 36px; flex: none; }
 .transport svg { display: block; }
 .transport output { flex: 1; text-align: center; color: var(--cp-text-muted); font: 12px Consolas, "Courier New", Courier, monospace; white-space: nowrap; }
 .cue-inspector { display: flex; gap: 8px; align-items: end; border-top: 1px solid var(--cp-border); padding-top: 12px; min-height: 70px; flex: none; }

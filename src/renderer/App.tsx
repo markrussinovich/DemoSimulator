@@ -268,10 +268,12 @@ export function App() {
               onError={() => setError('Video unavailable or unsupported. Restore the media or add the recording again.')} /></div>
             <Timeline duration={video.duration} time={time} cues={video.cues} selected={cueId} disabled={busy} select={setCueId} seek={seek} move={moveCue} remove={removeCue} />
             <div className="transport">
-              <button disabled={busy} onClick={() => seek(0)}>Reset</button>
-              <button disabled={busy} aria-label={previewPlaying ? 'Pause preview' : 'Play preview'} onClick={togglePreview}>{previewPlaying ? 'Pause' : 'Play'}</button>
-              <button disabled={busy} aria-label="Previous frame" onClick={() => seek(time - frameDuration.current)} title="Previous frame (approximate)"><svg width="12" height="14" viewBox="0 0 12 14" aria-hidden="true"><path fill="currentColor" d="M12 0 0 7l12 7z" /></svg></button>
-              <button disabled={busy} aria-label="Next frame" onClick={() => seek(time + frameDuration.current)} title="Next frame (approximate)"><svg width="12" height="14" viewBox="0 0 12 14" aria-hidden="true"><path fill="currentColor" d="m0 0 12 7-12 7z" /></svg></button>
+              <button disabled={busy} aria-label="Reset" title="Reset to beginning" onClick={() => seek(0)}><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M1 1h3v14H1zm14 0L5 8l10 7z" /></svg></button>
+              <button disabled={busy} aria-label={previewPlaying ? 'Pause preview' : 'Play preview'} title={previewPlaying ? 'Pause' : 'Play'} onClick={togglePreview}><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">{previewPlaying
+                ? <path fill="currentColor" d="M2 1h4v14H2zm8 0h4v14h-4z" />
+                : <path fill="currentColor" d="m2 1 12 7-12 7z" />}</svg></button>
+              <button disabled={busy} aria-label="Previous frame" onClick={() => seek(time - frameDuration.current)} title="Previous frame (approximate)"><svg width="10" height="12" viewBox="0 0 12 14" aria-hidden="true"><path fill="currentColor" d="M12 0 0 7l12 7z" /></svg><span>1 Frame</span></button>
+              <button disabled={busy} aria-label="Next frame" onClick={() => seek(time + frameDuration.current)} title="Next frame (approximate)"><span>1 Frame</span><svg width="10" height="12" viewBox="0 0 12 14" aria-hidden="true"><path fill="currentColor" d="m0 0 12 7-12 7z" /></svg></button>
               <output aria-label="Current video time">{formatTime(time)} / {formatTime(video.duration)}</output>
               <button className="primary" disabled={busy} onClick={addCue}>Add pause point</button>
             </div>
