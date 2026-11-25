@@ -1,8 +1,10 @@
 # Demo Simulator
 
-An offline Windows demo editor and player built with Electron, React and TypeScript. Turn a recording into a presenter-controlled demo: author pause points, play the video, and move your real mouse over it while deciding when to continue.
+Live demos can go wrong. Prerecorded videos avoid many surprises, but they don't wait while you explain a step or answer a question.
 
-A **project contains an ordered list of videos**, each with its own pause points. One portable `.demosim` file includes the project and its media; there is no separate playlist. Preview and presentation are silent. No server, account, upload, or network connection is required at runtime.
+**Demo Simulator gives you the reliability of a recording with control over the pace.** Add pause points to your videos, keep talking points in presenter notes, and resume when you're ready. Jump back to revisit a step without restarting the demo.
+
+Arrange multiple videos into a walkthrough and keep the recordings, pause points, and notes together in one portable `.demosim` file. Everything runs locally, with no account, uploads, or internet connection required. Playback is silent, leaving the narration to you.
 
 Recorded-cursor removal is not implemented. Start with cursor-free recordings; any cursor already baked into a video remains visible.
 
