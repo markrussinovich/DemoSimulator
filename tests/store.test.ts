@@ -32,6 +32,8 @@ describe('multi-video project documents', () => {
   it('round-trips an ordered project with cues and deduplicated media without its originals', async () => {
     const a = await workspace(), b = await workspace();
     const v = await video(a.store);
+    v.notes = 'Opening talking points\nKeep this formatting.';
+    v.cues.push({ id: randomUUID(), name: 'Custom notes', time: 3, notes: 'Explain this result instead.' });
     const catalog = projectCatalog([v, { ...v, id: randomUUID(), name: 'Second video' }]);
     catalog.projects[0].videos.reverse();
     await a.store.save(catalog);
@@ -42,6 +44,7 @@ describe('multi-video project documents', () => {
     const loaded = (await Store.open(b.root)).snapshot().catalog;
     expect(loaded.projects).toEqual(catalog.projects);
     expect(loaded.videos[0].cues).toEqual(v.cues);
+    expect(loaded.videos[0].notes).toBe(v.notes);
     expect(loaded.videos[0].media).toBe(loaded.videos[1].media);
     expect(await fs.readFile(await b.store.mediaPath(loaded.videos[0].media), 'utf8')).toBe('test-media-bytes');
   });

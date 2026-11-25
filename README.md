@@ -6,6 +6,8 @@ A **project contains an ordered list of videos**, each with its own pause points
 
 Recorded-cursor removal is not implemented. Start with cursor-free recordings; any cursor already baked into a video remains visible.
 
+![Demo Simulator editor with video pause points and presenter notes](docs/screenshot.png)
+
 ## Quickstart
 
 ### Run from source
@@ -20,7 +22,7 @@ npm run build
 npm start
 ```
 
-The repository is private; cloning requires authorized GitHub access. Dependency installation requires internet access; the built application runs offline.
+Dependency installation requires internet access; the built application runs offline.
 
 Select **New project**, give it a name, and choose **Add video**. Seek to a point, select **Add pause point**, then **Save**. Choose **Play project**, click the video to start, and click again or press Space at each pause to continue.
 
@@ -59,7 +61,7 @@ Projects are cached locally for media playback and reopening after launch. These
 
 - The editor has **one timeline**, with a live playhead and blue pause markers; the selected marker has a contrasting fill and outline. Native video controls are intentionally removed to avoid duplicate seek bars.
 - Click or drag the timeline to scrub; the preview and time readout stay synchronized.
-- **Add pause point** places a marker at the current position. Select it to edit its name or exact time in seconds.
+- **Double-click the timeline** to add a pause point at that position, or use **Add pause point** at the current playhead. Select a marker to edit its name or exact time in seconds.
 - **Drag a pause marker** along the timeline to move it and scrub the video simultaneously.
 - **Drag a marker off the timeline and release** to delete it. Escape cancels a drag. A click selects without changing its time.
 - Marker keyboard controls: Left/Right moves 33 ms; Shift+Left/Right moves one second; Delete/Backspace deletes. **Delete pause** is also available.
@@ -68,6 +70,7 @@ Projects are cached locally for media playback and reopening after launch. These
 - **Reset** (a left arrowhead against a vertical line), to the left of Play/Pause, stops the preview and returns to the beginning. Pauses fire again when replayed after Reset or seeking backward.
 - The directional **1 Frame** buttons step backward/forward approximately one frame. Exact stepping is not guaranteed, especially for variable-frame-rate inputs.
 - Click outside a marker or its inspector to clear the pause selection. Editing the name/time in the inspector keeps the selection.
+- **Presenter notes** toggles the notes editor to the right of the video. Drag its left divider to resize it; the width is remembered across runs. Notes follow the latest pause reached by the playhead while scrubbing or previewing; before the first pause, the panel shows **Video default**. Choose a notes entry to seek to that pause (or the beginning for Video default). Type to customize a pause's notes; **Use video default** resets it to the shared notes. Notes are saved in the project file and hidden by default during presentation.
 
 The preview scales to the available window instead of pushing controls below it. Video margins are black in both the editor and player, in light and dark themes. The video list scrolls within its panel; there are no Prev/Next page controls. Pause details use a single inspector rather than an ever-growing form. All editor controls fit without page scrolling at the supported minimum window size.
 
@@ -78,13 +81,20 @@ The preview scales to the available window instead of pushing controls below it.
 | Input | Result |
 | --- | --- |
 | Space | Start/resume, or pause actively playing video |
+| Ctrl+Space | Pause and slide open the bottom playback controls; press again to close without resuming |
+| Hold mouse at bottom edge for 1 second | Pause and slide open the timeline |
+| Hold mouse at right edge for 1 second | Pause and slide open the matching presenter notes |
 | Enter or primary click on video | Start the opening frame or resume a pause; does not advance a finished video |
 | Space at a non-final video's end | Load the next video's opening frame, paused |
 | Space again | Start the next video |
 | Switch away | Pause; returning does not resume or advance |
 | Escape | Return to editor and stop audio |
 
-The real OS cursor remains visible and movable. Video playback is always muted in both the editor and player; original audio tracks remain intact in the project files. The final video holds its last frame; it never loops automatically. Exit and play again to restart.
+The playback controls show pause markers and a draggable position slider, with **Start of video**, **Previous pause**, and **Play** buttons. Click a numbered pause to seek there. **Play** or **Space** resumes and slides the controls away. Seeking backward rearms later pauses; seeking to a pause resumes past that pause. At a non-final video's end, **Next video** loads the next opening frame paused.
+
+Hover-opened panels stay open while the pointer is inside and slide away when it leaves, without resuming playback. Ctrl+Space-opened controls stay open until dismissed or playback resumes. The read-only presentation notes show the latest reached pause's notes (including inherited defaults) and use the editor's remembered width. **Play** or **Space** hides either panel and resumes. Notes opened this way are visible on the presentation screen.
+
+During presentation, the real OS cursor stays hidden over the video, including while paused. It appears only over an open timeline or notes panel and error-recovery buttons; the editor keeps its normal cursors. Video playback is always muted in both the editor and player; original audio tracks remain intact in the project files. The final video holds its last frame; it never loops automatically. Use the playback controls to return to its start, or exit and play again.
 
 ## Previous projects
 

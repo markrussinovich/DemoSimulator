@@ -24,6 +24,7 @@ export class PlaybackController {
   private seekingTo: State = 'ready';
   private focused = true;
   private discovering = false;
+  private resumeAfterSeek = false;
   private removers: (() => void)[] = [];
   constructor(
     readonly video: HTMLVideoElement,
@@ -105,14 +106,36 @@ export class PlaybackController {
   }
   blur() {
     this.focused = false;
+    this.resumeAfterSeek = false;
     if (this.state === 'playing') this.pause('focus-paused');
   }
   refocus() { this.focused = true; }
   pause(state: State) {
+    this.resumeAfterSeek = false;
     this.generation++; this.video.pause(); this.stopClock(); this.clearTimeout();
     this.state = state; this.notify();
   }
+  seek(time: number) {
+    const project = this.projects[this.index];
+    if (this.disposed || !project || !Number.isFinite(time) || this.state === 'loading' || this.state === 'error') return;
+    const target = Math.max(0, Math.min(project.duration - .001, time));
+    this.cue = project.cues.filter(point => point.time <= target).length;
+    this.buffering = false;
+    this.hold(target, 'manually-paused');
+  }
+  previousCue() {
+    const project = this.projects[this.index];
+    if (!project) return;
+    const point = [...project.cues].sort((a, b) => a.time - b.time).filter(point => point.time < this.video.currentTime - .001).at(-1);
+    this.seek(point?.time ?? 0);
+  }
+  resume() {
+    if (this.disposed) return;
+    if (this.state === 'seeking') this.resumeAfterSeek = true;
+    else void this.input('space');
+  }
   private hold(time: number, after: State) {
+    this.resumeAfterSeek = false;
     this.generation++; this.video.pause(); this.stopClock();
     this.state = 'seeking'; this.seekingTo = after; this.heldTime = time;
     this.armTimeout('Could not seek to the pause point. Try re-encoding the recording.');
@@ -124,6 +147,7 @@ export class PlaybackController {
     this.clearTimeout();
     this.state = this.seekingTo;
     this.notify();
+    if (this.resumeAfterSeek) { this.resumeAfterSeek = false; void this.input('space'); }
   }
   private checkCue(time: number) {
     if (this.state !== 'playing') return;

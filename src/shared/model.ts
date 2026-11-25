@@ -2,13 +2,14 @@ import { z } from 'zod';
 
 export const cueSchema = z.object({
   id: z.string().uuid(), name: z.string().trim().min(1).max(200),
-  time: z.number().finite().positive()
+  time: z.number().finite().positive(), notes: z.string().optional()
 }).strict();
 export const videoSchema = z.object({
   id: z.string().uuid(), name: z.string().trim().min(1).max(200),
   media: z.string().regex(/^[a-f0-9-]+\.(mp4|webm)$/),
   duration: z.number().finite().positive(),
   width: z.number().int().positive(), height: z.number().int().positive(),
+  notes: z.string().optional(),
   cues: z.array(cueSchema).max(10000).transform(cues => cues.sort((a, b) => a.time - b.time))
 }).strict().superRefine((p, ctx) => {
   const times = new Set<number>();

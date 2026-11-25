@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type PointerEvent } from 'react';
 import { mediaUrl, type Catalog, type Video, type Workspace } from '../shared/model';
 import { Player } from './player/Player';
 import { Timeline, formatTime } from './editor/Timeline';
@@ -44,8 +44,18 @@ export function App() {
   const [time, setTime] = useState(0);
   const [previewPlaying, setPreviewPlaying] = useState(false);
   const [help, setHelp] = useState(false);
+  const [notesOpen, setNotesOpen] = useState(false);
+  const [notesWidth, setNotesWidth] = useState(() => {
+    try {
+      const width = Number(localStorage.getItem('presenter-notes-width'));
+      return Number.isFinite(width) && width >= 220 ? width : 260;
+    } catch { return 260; }
+  });
   const listArea = useRef<HTMLDivElement>(null);
   const preview = useRef<HTMLVideoElement>(null);
+  const previewLayout = useRef<HTMLDivElement>(null);
+  const notesPanel = useRef<HTMLElement>(null);
+  const notesResize = useRef<{ pointer: number; x: number; width: number } | null>(null);
   const helpDialog = useRef<HTMLDialogElement>(null);
   const frameDuration = useRef(1 / 30);
   const previewStart = useRef(0);
@@ -57,6 +67,18 @@ export function App() {
   const video = catalog.videos.find(video => video.id === videoId);
   previewCues.current = video?.cues ?? [];
   const cue = video?.cues.find(cue => cue.id === cueId);
+  const notesCue = video?.cues.filter(point => point.time <= time).at(-1);
+  useEffect(() => {
+    try { localStorage.setItem('presenter-notes-width', String(notesWidth)); } catch { return; }
+  }, [notesWidth]);
+  useEffect(() => {
+    if (!notesOpen || !previewLayout.current) return;
+    const observer = new ResizeObserver(([entry]) => {
+      setNotesWidth(width => Math.max(220, Math.min(width, Math.floor(entry.contentRect.width - 172))));
+    });
+    observer.observe(previewLayout.current);
+    return () => observer.disconnect();
+  }, [notesOpen, videoId, session]);
   useEffect(() => { setCueTime(cue ? String(cue.time) : ''); }, [cue?.id, cue?.time]);
   useEffect(() => { if (help && !helpDialog.current?.open) helpDialog.current?.showModal(); }, [help]);
   const ordered = project?.videos.map(id => catalog.videos.find(video => video.id === id)!) ?? [];
@@ -121,6 +143,20 @@ export function App() {
   const updateVideo = (change: Partial<Video>) => {
     setCatalog(current => ({ ...current, videos: current.videos.map(video => video.id === videoId ? { ...video, ...change } : video) }));
   };
+  const updateNotes = (notes: string | undefined) => {
+    if (!video) return;
+    if (notesCue) updateVideo({ cues: video.cues.map(point => point.id === notesCue.id ? { ...point, notes } : point) });
+    else updateVideo({ notes });
+  };
+  const resizeNotes = (width: number) => {
+    if (!previewLayout.current) return;
+    setNotesWidth(Math.max(220, Math.min(Math.floor(previewLayout.current.clientWidth - 172), Math.round(width))));
+  };
+  const endNotesResize = (event: PointerEvent<HTMLDivElement>) => {
+    if (notesResize.current?.pointer !== event.pointerId) return;
+    notesResize.current = null;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+  };
   const reorder = (from: number, to: number) => {
     if (!project || from === to || to < 0 || to >= project.videos.length) return;
     const videos = [...project.videos]; videos.splice(to, 0, videos.splice(from, 1)[0]);
@@ -155,9 +191,9 @@ export function App() {
     updateVideo({ cues: video.cues.map(cue => cue.id === id ? { ...cue, time: next } : cue).sort((a, b) => a.time - b.time) });
     seek(next);
   };
-  const addCue = () => {
+  const addCue = (atTime = preview.current?.currentTime ?? 0) => {
     if (!video || !preview.current) return;
-    const position = Math.round(preview.current.currentTime * 1000) / 1000;
+    const position = Math.round(atTime * 1000) / 1000;
     if (position <= 0 || position >= video.duration || video.cues.some(cue => Math.abs(cue.time - position) < .001)) {
       setError('Choose an interior frame without an existing pause point.'); return;
     }
@@ -187,7 +223,7 @@ export function App() {
   });
   if (session) return <Player projects={session} exit={exit} />;
   return <div className="app-shell" onPointerDownCapture={event => {
-    if (!(event.target as HTMLElement).closest('.pause-marker, .cue-inspector')) {
+    if (!(event.target as HTMLElement).closest('.pause-marker, .cue-inspector, .presenter-notes, .notes-toggle, .notes-resizer')) {
       setCueId('');
       const active = event.currentTarget.ownerDocument.activeElement;
       if (active instanceof HTMLElement && active.matches('.pause-marker')) active.blur();
@@ -263,14 +299,50 @@ export function App() {
         </aside>
         <main className="editor-panel">
           {video ? <>
-            <div className="video-heading"><label><span>Video {selectedIndex + 1}</span><input aria-label="Video name" value={video.name} disabled={busy} maxLength={200} onChange={event => updateVideo({ name: event.target.value })} /></label>
-              <button disabled={busy} onClick={() => void play([video])}>Play this video</button></div>
-            <div className="preview-area"><video key={video.media} className="preview" crossOrigin="anonymous" ref={preview} src={mediaUrl(video.media)} muted disablePictureInPicture
+            <div className="video-heading"><button disabled={busy} onClick={() => void play([video])}>Play this video</button>
+              <label><span>Video {selectedIndex + 1}</span><input aria-label="Video name" value={video.name} disabled={busy} maxLength={200} onChange={event => updateVideo({ name: event.target.value })} /></label>
+              <button className="notes-toggle" disabled={busy} aria-expanded={notesOpen} aria-controls="presenter-notes" onClick={() => setNotesOpen(!notesOpen)}>Presenter notes</button></div>
+            <div className="preview-layout" ref={previewLayout}>
+              <div className="preview-area"><video key={video.media} className="preview" crossOrigin="anonymous" ref={preview} src={mediaUrl(video.media)} muted disablePictureInPicture
               onClick={togglePreview}
               onTimeUpdate={event => { checkPreviewCue(event.currentTarget, event.currentTarget.currentTime); setTime(event.currentTarget.currentTime); }} onSeeked={event => setTime(event.currentTarget.currentTime)}
               onPlay={() => setPreviewPlaying(true)} onPause={() => setPreviewPlaying(false)} onEnded={() => setPreviewPlaying(false)}
               onError={() => setError('Video unavailable or unsupported. Restore the media or add the recording again.')} /></div>
-            <Timeline duration={video.duration} time={time} cues={video.cues} selected={cueId} disabled={busy} select={setCueId} seek={seek} move={moveCue} remove={removeCue} />
+              {notesOpen && <>
+                <div className="notes-resizer" role="separator" aria-label="Resize presenter notes" aria-orientation="vertical"
+                  aria-valuemin={220} aria-valuenow={notesWidth} aria-disabled={busy} tabIndex={busy ? -1 : 0}
+                  onPointerDown={event => {
+                    if (busy || event.button !== 0 || !notesPanel.current) return;
+                    event.preventDefault();
+                    notesResize.current = { pointer: event.pointerId, x: event.clientX, width: notesPanel.current.getBoundingClientRect().width };
+                    event.currentTarget.setPointerCapture(event.pointerId);
+                  }} onPointerMove={event => {
+                    const drag = notesResize.current;
+                    if (drag?.pointer === event.pointerId) resizeNotes(drag.width + drag.x - event.clientX);
+                  }} onPointerUp={endNotesResize} onPointerCancel={endNotesResize} onLostPointerCapture={endNotesResize}
+                  onKeyDown={event => {
+                    if (busy) return;
+                    if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+                    event.preventDefault();
+                    resizeNotes(event.key === 'Home' ? 220 : event.key === 'End' ? Infinity : notesWidth + (event.key === 'ArrowLeft' ? 16 : -16));
+                  }} />
+                <aside className="presenter-notes" id="presenter-notes" aria-label="Presenter notes" ref={notesPanel} style={{ width: notesWidth }}>
+                <div className="notes-toolbar">
+                  <select aria-label="Notes for" title="Notes follow the playhead. Choose an entry to seek." value={notesCue?.id ?? ''} disabled={busy} onChange={event => {
+                    setCueId(event.target.value);
+                    const point = video.cues.find(point => point.id === event.target.value); seek(point?.time ?? 0);
+                  }}><option value="">Video default</option>{video.cues.map((point, index) => <option key={point.id} value={point.id}>{index + 1}. {point.name}</option>)}</select>
+                  <button disabled={busy} aria-label="Close presenter notes" onClick={() => setNotesOpen(false)}>Close</button>
+                </div>
+                <label className="notes-inherit" aria-hidden={!notesCue}><input type="checkbox" checked={notesCue?.notes === undefined} disabled={busy || !notesCue}
+                  onChange={event => updateNotes(event.target.checked ? undefined : video.notes ?? '')} /><span>Use video default</span></label>
+                <textarea aria-label="Presenter notes" disabled={busy} value={notesCue?.notes ?? video.notes ?? ''}
+                  placeholder="Talking points and reminders..." onChange={event => updateNotes(event.target.value)} />
+                <p className="notes-hint">{!notesCue ? 'Default notes for all pause points.' : notesCue.notes === undefined ? 'Type here to customize this pause.' : 'These notes apply only to this pause.'}</p>
+                </aside>
+              </>}
+            </div>
+            <Timeline duration={video.duration} time={time} cues={video.cues} selected={cueId} disabled={busy} select={setCueId} seek={seek} add={addCue} move={moveCue} remove={removeCue} />
             <div className="transport">
               <button disabled={busy} aria-label="Reset" title="Reset to beginning" onClick={() => seek(0)}><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M1 1h3v14H1zm14 0L5 8l10 7z" /></svg></button>
               <button disabled={busy} aria-label={previewPlaying ? 'Pause preview' : 'Play preview'} title={previewPlaying ? 'Pause' : 'Play'} onClick={togglePreview}><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">{previewPlaying
@@ -279,7 +351,7 @@ export function App() {
               <button disabled={busy} aria-label="Previous frame" onClick={() => seek(time - frameDuration.current)} title="Previous frame (approximate)"><svg width="10" height="12" viewBox="0 0 12 14" aria-hidden="true"><path fill="currentColor" d="M12 0 0 7l12 7z" /></svg><span>1 Frame</span></button>
               <button disabled={busy} aria-label="Next frame" onClick={() => seek(time + frameDuration.current)} title="Next frame (approximate)"><span>1 Frame</span><svg width="10" height="12" viewBox="0 0 12 14" aria-hidden="true"><path fill="currentColor" d="m0 0 12 7-12 7z" /></svg></button>
               <output aria-label="Current video time">{formatTime(time)} / {formatTime(video.duration)}</output>
-              <button className="primary" disabled={busy} onClick={addCue}>Add pause point</button>
+              <button className="primary" disabled={busy} onClick={() => addCue()}>Add pause point</button>
             </div>
             <div className="cue-inspector">
               <label className="cue-picker"><span>Pause point</span><select aria-label="Selected pause point" disabled={busy || !video.cues.length} value={cue?.id ?? ''} onChange={event => {
@@ -296,8 +368,8 @@ export function App() {
           </> : <div className="empty"><h2>Add your first video</h2><p>A project contains all the videos in your demo, in playback order.<br />Use Add video to start, then place pause points on the timeline.</p></div>}
         </main>
       </div>
-      <footer><span>Space: pause/resume &middot; At video end: Space loads next, Space starts &middot; Esc: editor</span><span title={document?.filePath}>{document?.filePath ? 'Project file includes videos' : 'Save creates one portable project file'}</span></footer>
-    </> : <main className="welcome"><div><h2>Your demo, one project.</h2><p>Add videos, arrange them, and place pauses.<br />Move your real mouse while presenting at your own pace.</p>
+      <footer><span>Space: pause/resume &middot; Ctrl+Space: playback controls &middot; Esc: editor</span><span title={document?.filePath}>{document?.filePath ? 'Project file includes videos' : 'Save creates one portable project file'}</span></footer>
+    </> : !busy && <main className="welcome"><div><h2>Your demo, one project.</h2><p>Add videos, arrange them, and place pauses.<br />Move your real mouse while presenting at your own pace.</p>
       <div className="row"><button className="primary" disabled={busy} onClick={() => void newProject()}>Create a project</button><button disabled={busy} onClick={() => void openProject()}>Open a project file</button></div>
       <p className="muted">One .demosim file holds your videos, their order, and all pause points.</p>
       <button className="text-button" disabled={busy} onClick={() => void openProject(true)}>Open a previous-version workspace...</button>
@@ -305,10 +377,13 @@ export function App() {
     {help && <dialog className="help-dialog" ref={helpDialog} aria-label="Quick guide" onClose={() => setHelp(false)}>
       <div className="panel-heading"><h2>Quick guide</h2><button onClick={() => setHelp(false)} aria-label="Close help">Close</button></div>
       <p><strong>New / Open / Save / Save as</strong> work with a single .demosim project file. It includes all videos; no workspace setup or separate playlist is needed.</p>
-      <p>Add videos and drag their rows to reorder. Use the timeline to scrub. Add a pause point, drag its numbered marker to change its time, or drag it away from the track to delete it. Select a marker to name it or type its exact time.</p>
+      <p>Add videos and drag their rows to reorder. Use the timeline to scrub; double-click it to add a pause point. Drag a numbered marker to change its time, or drag it away from the track to delete it. Select a marker to name it or type its exact time.</p>
       <p>Marker keyboard: Left/Right moves 33 ms; Shift moves 1 second; Delete removes it. Escape cancels a marker drag. Frame stepping is approximate.</p>
       <p>Play/Pause or clicking the preview controls editor playback, including authored pauses. Reset stops and returns to the beginning. Arrowheads step approximately one frame. Click outside a marker or its inspector to clear the selection.</p>
+      <p>Presenter notes opens the notes editor beside the video. Drag its left divider to resize; the width is remembered across runs. Notes follow the latest pause reached by the playhead, or Video default before the first pause. Choose a notes entry to seek to it; type to customize a pause, or check Use video default to reset it. Notes are saved in the project file and hidden by default during presentation.</p>
       <p>Play project starts with the first video paused. Space pauses/resumes; Enter or click resumes. At the end, Space loads the next video paused, and another Space starts it. Switching away pauses. Escape returns to the editor.</p>
+      <p>Ctrl+Space pauses and slides open playback controls. Scrub the timeline, choose a pause, go to the previous pause, or return to the start. Play or Space resumes and hides the controls. Ctrl+Space closes them without resuming.</p>
+      <p>During presentation, hold the mouse at the bottom edge for one second to open the timeline, or at the right edge to show the matching notes. Either pauses playback. Hover-opened panels hide when the pointer leaves, without resuming. Play or Space resumes and hides them. Opened notes are visible on the presentation screen.</p>
       <p className="muted">Use cursor-free recordings. Recorded-cursor removal is not included.</p>
       <button className="text-button" disabled={busy} onClick={() => { setHelp(false); void openProject(true); }}>Open a previous-version workspace...</button>
     </dialog>}

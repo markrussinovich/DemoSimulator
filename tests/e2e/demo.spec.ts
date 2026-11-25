@@ -187,7 +187,7 @@ test('preview clicks and Play honor pauses, Reset rearms them, arrows step, and 
   await expect.poll(() => page.locator('.preview').evaluate((video: HTMLVideoElement) => video.currentTime)).toBeGreaterThan(0);
   await page.getByRole('button', { name: 'Previous frame', exact: true }).click();
   await expect.poll(() => page.locator('.preview').evaluate((video: HTMLVideoElement) => video.currentTime)).toBeCloseTo(0, 3);
-  expect(await page.getByTestId('timeline').evaluate(element => getComputedStyle(element).cursor)).toBe('text');
+  expect(await page.getByTestId('timeline').evaluate(element => getComputedStyle(element).cursor)).toBe('default');
   expect(await page.locator('.timeline-rail').evaluate(element => element.getBoundingClientRect().height)).toBeGreaterThan(4);
   await page.locator('.preview').click();
   const pauseButton = page.getByRole('button', { name: 'Pause preview', exact: true });

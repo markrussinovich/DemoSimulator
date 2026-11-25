@@ -4,6 +4,7 @@ import type { Cue } from '../../shared/model';
 type Props = {
   duration: number; time: number; cues: Cue[]; selected: string; disabled: boolean;
   select: (id: string) => void; seek: (time: number) => void;
+  add: (time: number) => void;
   move: (id: string, time: number) => void; remove: (id: string) => void;
 };
 export const formatTime = (time: number) => {
@@ -11,7 +12,7 @@ export const formatTime = (time: number) => {
   const minutes = Math.floor(milliseconds / 60000);
   return `${minutes}:${((milliseconds % 60000) / 1000).toFixed(3).padStart(6, '0')}`;
 };
-export function Timeline({ duration, time, cues, selected, disabled, select, seek, move, remove }: Props) {
+export function Timeline({ duration, time, cues, selected, disabled, select, seek, add, move, remove }: Props) {
   const track = useRef<HTMLDivElement>(null);
   const drag = useRef<{ id: string; original: number; pointer: number; x: number; y: number; moved: boolean } | null>(null);
   const scrub = useRef<number | null>(null);
@@ -41,6 +42,11 @@ export function Timeline({ duration, time, cues, selected, disabled, select, see
     if (drag.current) move(drag.current.id, drag.current.original);
     drag.current = null; setOutside(false);
   };
+  const endScrub = (event: PointerEvent<HTMLDivElement>) => {
+    if (scrub.current !== event.pointerId) return;
+    scrub.current = null;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+  };
   const keys = (event: KeyboardEvent, cue?: Cue) => {
     if (disabled) return;
     if (event.key === 'Escape' && drag.current) { event.preventDefault(); cancel(); return; }
@@ -56,14 +62,19 @@ export function Timeline({ duration, time, cues, selected, disabled, select, see
     if (cue) move(cue.id, Math.round(value * 1000) / 1000); else seek(value);
   };
   return <div className={`timeline-panel${outside ? ' deleting' : ''}`} aria-label="Video timeline">
-    <div className="timeline-help"><span>Pause points: drag to move; drag off to delete</span><span>{outside ? 'Release to delete pause point' : `${cues.length} pause point${cues.length === 1 ? '' : 's'}`}</span></div>
+    <div className="timeline-help"><span>Pause points: double-click to add; drag to move/delete</span><span>{outside ? 'Release to delete pause point' : `${cues.length} pause point${cues.length === 1 ? '' : 's'}`}</span></div>
     <div className="timeline-track" ref={track} data-testid="timeline" onPointerDown={event => {
       if (disabled || event.button !== 0 || (event.target as HTMLElement).closest('.pause-marker')) return;
+      event.preventDefault();
       scrub.current = event.pointerId; event.currentTarget.setPointerCapture(event.pointerId);
       seek(position(event.clientX));
     }} onPointerMove={event => { if (scrub.current === event.pointerId) seek(position(event.clientX)); }}
-    onPointerUp={event => { if (scrub.current === event.pointerId) { seek(position(event.clientX)); scrub.current = null; } }}
-    onPointerCancel={() => { scrub.current = null; }}>
+    onPointerUp={event => { if (scrub.current === event.pointerId) { endScrub(event); seek(position(event.clientX)); } }}
+    onPointerCancel={endScrub} onLostPointerCapture={endScrub} onDragStart={event => event.preventDefault()}
+    onDoubleClick={event => {
+      if (disabled || event.button !== 0 || (event.target as HTMLElement).closest('.pause-marker')) return;
+      event.preventDefault(); add(position(event.clientX));
+    }}>
       <div className="timeline-rail" /><div className="timeline-fill" style={{ width: `${time / duration * 100}%` }} />
       <div className="playhead" role="slider" aria-label="Video position" aria-valuemin={0} aria-valuemax={duration} aria-valuenow={time}
         aria-valuetext={formatTime(time)} aria-disabled={disabled} tabIndex={disabled ? -1 : 0} style={{ left: `${time / duration * 100}%` }} onKeyDown={event => keys(event)} />
