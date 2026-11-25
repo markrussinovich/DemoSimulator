@@ -1,0 +1,12 @@
+*
+!.gitignore
+!analysis.json
+!collection.json
+!events.jsonl
+!index.html
+!player.html
+!pricing.json
+!report.html
+!report.pdf
+!timeline.png
+!verification.json

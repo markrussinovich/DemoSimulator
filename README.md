@@ -104,6 +104,12 @@ Old `.demosim` archives open directly. For the original folder-based version, ch
 
 Each previous playlist becomes a multi-video project, preserving its name, order, repeated entries, and pause points. Standalone videos become one-video projects. When several projects are recovered, select one in **Recovered project** and save each as its own `.demosim` file. Original workspace manifests and recordings are not rewritten.
 
+## Development insights
+
+Explore the [development session insights (PDF)](insights/report.pdf), including the conversation timeline and usage estimates. The report was generated with [Agent Session Insights](https://github.com/markrussinovich/agent-session-insights).
+
+Raw session snapshots and machine-specific discovery data are not included. Download the HTML report and player from `insights` for interactive playback.
+
 ## Build and validation
 
 ```powershell

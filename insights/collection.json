@@ -1,0 +1,449 @@
+{
+  "title": "Session review: DemoSimulator",
+  "timezone": "America/Los_Angeles",
+  "sources": [
+    {
+      "id": "S01",
+      "harness": "copilot",
+      "session": "public-session-01",
+      "original_path": "Private source snapshot (not published)",
+      "snapshot": "private\\sources\\S01.jsonl",
+      "sha256": "d092e081add385532414edb752c0f7d0fafd62adf6293747e8fb66ca7d103b35",
+      "bytes": 8765176,
+      "raw_records": 1515,
+      "started_at": "2026-11-24T23:00:37.594Z",
+      "started_at_basis": "Session metadata",
+      "start": null,
+      "end": null,
+      "outside_interval": 0,
+      "counts": {
+        "user": 31,
+        "usage": 180,
+        "assistant": 54,
+        "tool": 305
+      },
+      "warnings": [
+        "Event-log-only import: SQL-only and unrecorded auxiliary requests are not reconstructed."
+      ]
+    }
+  ],
+  "missing_harnesses": {
+    "dsh": "No accessible native history directory.",
+    "replit": "No source supplied.",
+    "codex": "No source supplied.",
+    "cursor": "No source supplied.",
+    "claude": "No source supplied."
+  },
+  "warnings": [
+    "S01: Event-log-only import: SQL-only and unrecorded auxiliary requests are not reconstructed."
+  ],
+  "pricing": {
+    "snapshot": "pricing.json",
+    "sha256": "40e60e705d030a227d4e0b375b21fc3435aa9da4c65d51dff0299a90181fca6c",
+    "original_path": "pricing.json",
+    "card": {
+      "verified_on": "2026-11-13",
+      "currency": "USD",
+      "unit": "per million tokens",
+      "basis": "Standard global retail API-equivalent token processing; not subscription spend or an invoice",
+      "sources": {
+        "openai": "https://developers.openai.com/api/docs/pricing",
+        "anthropic": "https://platform.claude.com/docs/en/about-claude/pricing"
+      },
+      "models": {
+        "gpt-6-astra": {
+          "input": 10,
+          "cache_read": 1,
+          "cache_write": 12.5,
+          "output": 50,
+          "long_context_threshold": 272000,
+          "long_input_multiplier": 2,
+          "long_output_multiplier": 1.5,
+          "source": "openai"
+        },
+        "gpt-6.1-sol": {
+          "input": 2,
+          "cache_read": 0.1,
+          "cache_write": 2.5,
+          "output": 10,
+          "long_context_threshold": 272000,
+          "long_input_multiplier": 2,
+          "long_output_multiplier": 1.5,
+          "source": "openai"
+        },
+        "gpt-6.1-terra": {
+          "input": 1,
+          "cache_read": 0.05,
+          "cache_write": 1.25,
+          "output": 5,
+          "long_context_threshold": 272000,
+          "long_input_multiplier": 2,
+          "long_output_multiplier": 1.5,
+          "source": "openai"
+        },
+        "gpt-6-luna": {
+          "input": 0.1,
+          "cache_read": 0.01,
+          "cache_write": 0.125,
+          "output": 0.5,
+          "long_context_threshold": 272000,
+          "long_input_multiplier": 2,
+          "long_output_multiplier": 1.5,
+          "source": "openai"
+        },
+        "gpt-6-sol": {
+          "input": 2,
+          "cache_read": 0.2,
+          "cache_write": 2.5,
+          "output": 10,
+          "long_context_threshold": 272000,
+          "long_input_multiplier": 2,
+          "long_output_multiplier": 1.5,
+          "source": "openai"
+        },
+        "gpt-5.6-sol": {
+          "input": 4,
+          "cache_read": 0.4,
+          "cache_write": 5,
+          "output": 20,
+          "long_context_threshold": 272000,
+          "long_input_multiplier": 2,
+          "long_output_multiplier": 1.5,
+          "source": "openai"
+        },
+        "gpt-5.6-terra": {
+          "input": 2,
+          "cache_read": 0.2,
+          "cache_write": 2.5,
+          "output": 12,
+          "long_context_threshold": 272000,
+          "long_input_multiplier": 2,
+          "long_output_multiplier": 1.5,
+          "source": "openai"
+        },
+        "gpt-5.6-luna": {
+          "input": 0.2,
+          "cache_read": 0.02,
+          "cache_write": 0.25,
+          "output": 1.2,
+          "long_context_threshold": 272000,
+          "long_input_multiplier": 2,
+          "long_output_multiplier": 1.5,
+          "source": "openai"
+        },
+        "gpt-5.5": {
+          "input": 5,
+          "cache_read": 0.5,
+          "cache_write": 5,
+          "output": 30,
+          "long_context_threshold": 272000,
+          "long_input_multiplier": 2,
+          "long_output_multiplier": 1.5,
+          "source": "openai"
+        },
+        "gpt-5.5-pro": {
+          "input": 30,
+          "cache_read": 30,
+          "cache_write": 30,
+          "output": 180,
+          "long_context_threshold": 272000,
+          "long_input_multiplier": 2,
+          "long_output_multiplier": 1.5,
+          "source": "openai"
+        },
+        "gpt-5.4": {
+          "input": 2.5,
+          "cache_read": 0.25,
+          "cache_write": 2.5,
+          "output": 15,
+          "long_context_threshold": 272000,
+          "long_input_multiplier": 2,
+          "long_output_multiplier": 1.5,
+          "source": "openai"
+        },
+        "gpt-5.4-pro": {
+          "input": 30,
+          "cache_read": 30,
+          "cache_write": 30,
+          "output": 180,
+          "long_context_threshold": 272000,
+          "long_input_multiplier": 2,
+          "long_output_multiplier": 1.5,
+          "source": "openai"
+        },
+        "gpt-5.4-mini": {
+          "input": 0.75,
+          "cache_read": 0.075,
+          "cache_write": 0.75,
+          "output": 4.5,
+          "source": "openai"
+        },
+        "gpt-5.4-nano": {
+          "input": 0.2,
+          "cache_read": 0.02,
+          "cache_write": 0.2,
+          "output": 1.25,
+          "source": "openai"
+        },
+        "gpt-5.2": {
+          "input": 1.75,
+          "cache_read": 0.175,
+          "cache_write": 1.75,
+          "output": 14,
+          "source": "openai"
+        },
+        "gpt-5.2-pro": {
+          "input": 21,
+          "cache_read": 21,
+          "cache_write": 21,
+          "output": 168,
+          "source": "openai"
+        },
+        "gpt-5.1": {
+          "input": 1.25,
+          "cache_read": 0.125,
+          "cache_write": 1.25,
+          "output": 10,
+          "source": "openai"
+        },
+        "gpt-5": {
+          "input": 1.25,
+          "cache_read": 0.125,
+          "cache_write": 1.25,
+          "output": 10,
+          "source": "openai"
+        },
+        "gpt-5-mini": {
+          "input": 0.25,
+          "cache_read": 0.025,
+          "cache_write": 0.25,
+          "output": 2,
+          "source": "openai"
+        },
+        "gpt-5-nano": {
+          "input": 0.05,
+          "cache_read": 0.005,
+          "cache_write": 0.05,
+          "output": 0.4,
+          "source": "openai"
+        },
+        "gpt-5-pro": {
+          "input": 15,
+          "cache_read": 15,
+          "cache_write": 15,
+          "output": 120,
+          "source": "openai"
+        },
+        "gpt-4.1": {
+          "input": 2,
+          "cache_read": 0.5,
+          "cache_write": 2,
+          "output": 8,
+          "source": "openai"
+        },
+        "gpt-4.1-mini": {
+          "input": 0.4,
+          "cache_read": 0.1,
+          "cache_write": 0.4,
+          "output": 1.6,
+          "source": "openai"
+        },
+        "gpt-4o": {
+          "input": 2.5,
+          "cache_read": 1.25,
+          "cache_write": 2.5,
+          "output": 10,
+          "source": "openai"
+        },
+        "gpt-4o-mini": {
+          "input": 0.15,
+          "cache_read": 0.075,
+          "cache_write": 0.15,
+          "output": 0.6,
+          "source": "openai"
+        },
+        "o3": {
+          "input": 2,
+          "cache_read": 0.5,
+          "cache_write": 2,
+          "output": 8,
+          "source": "openai"
+        },
+        "o3-pro": {
+          "input": 20,
+          "cache_read": 20,
+          "cache_write": 20,
+          "output": 80,
+          "source": "openai"
+        },
+        "claude-fable-5-2": {
+          "input": 8,
+          "cache_read": 0.2,
+          "cache_write": 10,
+          "output": 40,
+          "source": "anthropic"
+        },
+        "claude-mythos-5-2": {
+          "input": 8,
+          "cache_read": 0.2,
+          "cache_write": 10,
+          "output": 40,
+          "source": "anthropic"
+        },
+        "claude-fable-5-1": {
+          "input": 10,
+          "cache_read": 0.25,
+          "cache_write": 12.5,
+          "output": 50,
+          "source": "anthropic"
+        },
+        "claude-mythos-5-1": {
+          "input": 10,
+          "cache_read": 0.25,
+          "cache_write": 12.5,
+          "output": 50,
+          "source": "anthropic"
+        },
+        "claude-fable-5": {
+          "input": 10,
+          "cache_read": 1,
+          "cache_write": 12.5,
+          "output": 50,
+          "source": "anthropic"
+        },
+        "claude-mythos-5": {
+          "input": 10,
+          "cache_read": 1,
+          "cache_write": 12.5,
+          "output": 50,
+          "source": "anthropic"
+        },
+        "claude-opus-5-5": {
+          "input": 4,
+          "cache_read": 0.2,
+          "cache_write": 5,
+          "output": 20,
+          "source": "anthropic"
+        },
+        "claude-opus-5": {
+          "input": 5,
+          "cache_read": 0.5,
+          "cache_write": 6.25,
+          "output": 25,
+          "source": "anthropic"
+        },
+        "claude-opus-4-8": {
+          "input": 5,
+          "cache_read": 0.5,
+          "cache_write": 6.25,
+          "output": 25,
+          "source": "anthropic"
+        },
+        "claude-opus-4-7": {
+          "input": 5,
+          "cache_read": 0.5,
+          "cache_write": 6.25,
+          "output": 25,
+          "source": "anthropic"
+        },
+        "claude-opus-4-6": {
+          "input": 5,
+          "cache_read": 0.5,
+          "cache_write": 6.25,
+          "output": 25,
+          "source": "anthropic"
+        },
+        "claude-opus-4-5": {
+          "input": 5,
+          "cache_read": 0.5,
+          "cache_write": 6.25,
+          "output": 25,
+          "source": "anthropic"
+        },
+        "claude-opus-4-1": {
+          "input": 15,
+          "cache_read": 1.5,
+          "cache_write": 18.75,
+          "output": 75,
+          "source": "anthropic"
+        },
+        "claude-opus-4": {
+          "input": 15,
+          "cache_read": 1.5,
+          "cache_write": 18.75,
+          "output": 75,
+          "source": "anthropic"
+        },
+        "claude-sonnet-5-5": {
+          "input": 2,
+          "cache_read": 0.1,
+          "cache_write": 2.5,
+          "output": 10,
+          "source": "anthropic"
+        },
+        "claude-sonnet-5": {
+          "input": 2,
+          "cache_read": 0.2,
+          "cache_write": 2.5,
+          "output": 10,
+          "source": "anthropic"
+        },
+        "claude-sonnet-4-6": {
+          "input": 3,
+          "cache_read": 0.3,
+          "cache_write": 3.75,
+          "output": 15,
+          "source": "anthropic"
+        },
+        "claude-sonnet-4-5": {
+          "input": 3,
+          "cache_read": 0.3,
+          "cache_write": 3.75,
+          "output": 15,
+          "source": "anthropic"
+        },
+        "claude-sonnet-4": {
+          "input": 3,
+          "cache_read": 0.3,
+          "cache_write": 3.75,
+          "output": 15,
+          "source": "anthropic"
+        },
+        "claude-haiku-5-5": {
+          "input": 0.1,
+          "cache_read": 0.01,
+          "cache_write": 0.125,
+          "output": 0.5,
+          "long_context_threshold": 100000,
+          "long_input_multiplier": 5,
+          "long_output_multiplier": 5,
+          "source": "anthropic"
+        },
+        "claude-haiku-4-5": {
+          "input": 1,
+          "cache_read": 0.1,
+          "cache_write": 1.25,
+          "output": 5,
+          "source": "anthropic"
+        }
+      },
+      "assumptions": [
+        "Reprice recorded usage at the dated standard global retail rates, not historical invoices. No report-time network access is required.",
+        "Anthropic cache writes use the five-minute rate. OpenAI models with explicit write pricing use the 30-minute rate; models without separate write pricing use ordinary input pricing. Models without cache discounts use ordinary input pricing.",
+        "Recorded cache counts, including explicit zero, take precedence. Missing cache counts are unknown, not observed zero.",
+        "When missing, cache reads may be estimated as the previous request's input, capped by available input, only for the same source, harness, session and model, a nonshrinking context, and a positive gap of at most five minutes. This assumes append-only context reuse; token counts do not prove an identical prefix or a cache hit.",
+        "Inferred-cache point estimates assume no unrecorded cache writes. Missing-cache cost ranges allocate unknown input between fresh tokens, cache reads and cache writes at the minimum/maximum applicable rates. Ranges are sensitivity bounds, not confidence intervals.",
+        "Without eligible consecutive context evidence, show only a range; do not assume an arbitrary cached-input percentage. Missing total input/output or an unknown model rate remains unpriced.",
+        "Exclude subscriptions, credits, tool fees, compute, storage, taxes, discounts, regional premiums, and fast-mode premiums. These are API-equivalent estimates, not actual billed spend.",
+        "GPT-5.6 Sol promotional retail rates are scheduled through 2026-11-30; this is a frozen 2026-11-13 snapshot, not live pricing."
+      ]
+    }
+  },
+  "publication": {
+    "raw_snapshots_included": false,
+    "discovery_metadata_included": false,
+    "session_identifiers": "Pseudonymized consistently across public assets.",
+    "source_paths": "Machine-specific original paths removed.",
+    "conversation": "Normalized user/assistant messages reviewed for public publication."
+  }
+}
