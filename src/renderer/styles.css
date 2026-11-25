@@ -77,6 +77,7 @@ label > span { font-size: 12px; }
 .brand { display: flex; align-items: baseline; gap: 16px; white-space: nowrap; }
 .brand > span { font-size: 12px; }
 .file-actions { display: flex; gap: 8px; align-items: center; flex: none; }
+.file-actions .delete-project { margin-left: 8px; }
 .row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .project-bar { display: flex; align-items: center; gap: 16px; padding: 12px 20px; flex: none; }
 .project-title { display: flex; align-items: center; gap: 12px; min-width: 160px; flex: 1; }
@@ -166,8 +167,9 @@ footer { display: flex; justify-content: space-between; gap: 16px; padding: 0 20
 .playback-controls { position: absolute; bottom: 0; left: 0; right: 0; padding: 8px 20px 12px; background: var(--cp-surface); border-top: 1px solid var(--cp-border); transform: translateY(100%); transition: transform 160ms ease; pointer-events: none; }
 .playback-controls.open { transform: translateY(0); pointer-events: auto; cursor: default; }
 .playback-seekbar { position: relative; height: 40px; margin: 0 12px; padding-top: 16px; }
-.playback-seekbar input { appearance: none; display: block; width: 100%; height: 24px; margin: 0; padding: 0; border: 0; background: transparent; cursor: default; }
-.playback-seekbar input::-webkit-slider-runnable-track { height: 6px; border-radius: 3px; background: var(--cp-border-strong); }
+.playback-seekbar .timeline-rail, .playback-seekbar .timeline-fill { top: 25px; height: 6px; border-radius: 3px; }
+.playback-seekbar input { position: relative; appearance: none; display: block; width: 100%; height: 24px; margin: 0; padding: 0; border: 0; background: transparent; cursor: default; }
+.playback-seekbar input::-webkit-slider-runnable-track { height: 6px; border-radius: 3px; background: transparent; }
 .playback-seekbar input::-webkit-slider-thumb { appearance: none; width: 4px; height: 16px; margin-top: -5px; background: var(--cp-accent); }
 .playback-cue { position: absolute; top: 0; width: 20px; height: 20px; padding: 0; transform: translateX(-50%); background: var(--cp-marker); color: var(--cp-marker-fg); border: 1px solid var(--cp-marker); border-radius: 4px; font-size: 11px; }
 .playback-cue::after { content: ""; position: absolute; top: 19px; left: calc(50% - 1px); width: 2px; height: 10px; background: var(--cp-marker); pointer-events: none; }

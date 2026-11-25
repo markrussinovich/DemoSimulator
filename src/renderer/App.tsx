@@ -86,10 +86,10 @@ export function App() {
     listArea.current?.querySelector('[aria-current="true"]')?.scrollIntoView({ block: 'nearest' });
   }, [selectedIndex, ordered.length, session]);
   const dirty = !!document && (JSON.stringify(catalog) !== saved || !document.filePath);
-  const install = (value: Workspace, id = value.projectId ?? value.catalog.projects[0]?.id ?? '') => {
-    setDocument(value); setCatalog(value.catalog); setSaved(value.recovery ? '' : JSON.stringify(value.catalog));
+  const install = (value: Workspace | null, id = value?.projectId ?? value?.catalog.projects[0]?.id ?? '') => {
+    setDocument(value); setCatalog(value?.catalog ?? emptyCatalog()); setSaved(value && !value.recovery ? JSON.stringify(value.catalog) : '');
     setProjectId(id); setSelectedIndex(0);
-    setCueId(''); setTime(0); setError(value.recovery ?? ''); setPreviewPlaying(false);
+    setCueId(''); setTime(0); setError(value?.recovery ?? ''); setPreviewPlaying(false);
   };
   useEffect(() => {
     window.demo.currentProject().then(value => { if (value) install(value); }).catch(error => setError(String(error))).finally(() => setBusy(false));
@@ -201,6 +201,9 @@ export function App() {
     updateVideo({ cues: [...video.cues, point].sort((a, b) => a.time - b.time) }); setCueId(point.id); seek(position);
   };
   const newProject = () => run(async () => { if (discard()) install(await window.demo.newProject()); });
+  const deleteProject = () => run(async () => {
+    if (project && await window.demo.deleteProject(catalog, project.id)) install(await window.demo.currentProject());
+  });
   const openProject = (legacy = false) => run(async () => {
     if (!discard()) return;
     const value = legacy ? await window.demo.openLegacyWorkspace() : await window.demo.openProject();
@@ -236,6 +239,7 @@ export function App() {
         <button disabled={busy} onClick={() => void openProject()} title="Ctrl+O">Open project</button>
         <button className="primary" disabled={busy || !project || !dirty} onClick={() => void run(async () => { await save(); })} title="Ctrl+S">Save</button>
         <button disabled={busy || !project} onClick={() => void run(async () => { await save(true); })} title="Ctrl+Shift+S">Save as...</button>
+        <button className="danger delete-project" disabled={busy || !project} onClick={() => void deleteProject()}>Delete project</button>
         <button aria-label="Help" aria-expanded={help} onClick={() => setHelp(!help)}>?</button>
       </nav>
     </header>

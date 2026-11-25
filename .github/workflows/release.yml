@@ -1,0 +1,252 @@
+name: Release
+
+on:
+  push:
+    branches:
+      - main
+    paths-ignore:
+      - "**.md"
+      - "docs/**"
+      - "insights/**"
+      - "LICENSE"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version without v (for example 1.2.0). Blank bumps the patch."
+        required: false
+        type: string
+      draft:
+        description: "Create the release as a draft"
+        required: false
+        type: boolean
+        default: false
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    outputs:
+      released: ${{ steps.tags.outputs.released }}
+    steps:
+      - id: tags
+        env:
+          REPO_URL: ${{ github.server_url }}/${{ github.repository }}.git
+        run: |
+          tags=$(git ls-remote --tags "$REPO_URL" 'refs/tags/v*' | awk -v sha="$GITHUB_SHA" '$1 == sha { print $2 }')
+          if [ -n "$tags" ] && [ "$GITHUB_EVENT_NAME" = "push" ]; then
+            echo "Commit $GITHUB_SHA is already released as: $tags"
+            echo "released=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "released=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  release:
+    needs: check
+    if: needs.check.outputs.released != 'true'
+    runs-on: windows-latest
+    environment: release
+    env:
+      AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+      AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+      AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      SIGNING_ACCOUNT: ${{ vars.AZURE_SIGNING_ACCOUNT }}
+      SIGNING_PROFILE: ${{ vars.AZURE_CERTIFICATE_PROFILE }}
+      SIGNING_ENDPOINT: ${{ vars.AZURE_SIGNING_ENDPOINT }}
+
+    steps:
+      - name: Require signing configuration
+        shell: pwsh
+        run: |
+          foreach ($name in 'AZURE_CLIENT_ID', 'AZURE_TENANT_ID', 'AZURE_SUBSCRIPTION_ID',
+                            'SIGNING_ACCOUNT', 'SIGNING_PROFILE', 'SIGNING_ENDPOINT') {
+            if ([string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($name))) {
+              throw "Missing $name. Releases must be signed."
+            }
+          }
+
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: "24"
+          cache: npm
+
+      - name: Resolve version
+        id: version
+        shell: pwsh
+        env:
+          REQUESTED_VERSION: ${{ inputs.version }}
+        run: |
+          $version = "$env:REQUESTED_VERSION".Trim()
+
+          if (-not $version) {
+            $base = "$((Get-Content package.json -Raw | ConvertFrom-Json).version)".Trim()
+            if (-not ($base -match '^(\d+)\.(\d+)\.(\d+)$')) {
+              throw "package.json version '$base' must be major.minor.patch."
+            }
+
+            $major, $minor, $patch = [int]$Matches[1], [int]$Matches[2], [int]$Matches[3]
+            $released = @(git ls-remote --tags origin "refs/tags/v$major.$minor.*" |
+              ForEach-Object { if ($_ -match "refs/tags/v$major\.$minor\.(\d+)$") { [int]$Matches[1] } })
+            if ($LASTEXITCODE -ne 0) { throw "Could not list tags from origin." }
+
+            if ($released.Count -gt 0) {
+              $patch = [math]::Max($patch, ($released | Measure-Object -Maximum).Maximum + 1)
+            }
+
+            $version = "$major.$minor.$patch"
+          }
+
+          if (-not ($version -match '^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$')) {
+            throw "Version '$version' is not a valid semantic version."
+          }
+
+          "version=$version" >> $env:GITHUB_OUTPUT
+          "tag=v$version" >> $env:GITHUB_OUTPUT
+          Write-Host "Building version $version"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Apply release version
+        env:
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
+        run: npm version "$env:RELEASE_VERSION" --no-git-tag-version --allow-same-version
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Test
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+      - name: Build portable applications
+        run: >
+          npx electron-builder --win --x64 --arm64 --dir --publish never
+          --config.win.signAndEditExecutable=true
+          --config.win.signExecutable=false
+
+      - name: Test packaged application
+        env:
+          DEMOSIM_PACKAGED: "1"
+          DEMOSIM_EXECUTABLE: ${{ github.workspace }}\release\win-unpacked\Demo Simulator.exe
+        run: npx playwright test regressions.spec.ts
+
+      - name: Log in to Azure for signing
+        uses: azure/login@935127ca5bb3c4b02c9c2c10060028383878f33f # v3
+        with:
+          client-id: ${{ env.AZURE_CLIENT_ID }}
+          tenant-id: ${{ env.AZURE_TENANT_ID }}
+          subscription-id: ${{ env.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Sign executables
+        uses: azure/artifact-signing-action@c0ae2c1d0c1847ab81ac0ab8521bee597cfedd30 # v2
+        with:
+          endpoint: ${{ env.SIGNING_ENDPOINT }}
+          signing-account-name: ${{ env.SIGNING_ACCOUNT }}
+          certificate-profile-name: ${{ env.SIGNING_PROFILE }}
+          files: |
+            ${{ github.workspace }}\release\win-unpacked\Demo Simulator.exe
+            ${{ github.workspace }}\release\win-arm64-unpacked\Demo Simulator.exe
+          file-digest: SHA256
+          timestamp-rfc3161: http://timestamp.acs.microsoft.com
+          timestamp-digest: SHA256
+          exclude-environment-credential: true
+          exclude-workload-identity-credential: true
+          exclude-managed-identity-credential: true
+          exclude-shared-token-cache-credential: true
+          exclude-visual-studio-credential: true
+          exclude-visual-studio-code-credential: true
+          exclude-azure-cli-credential: false
+          exclude-azure-powershell-credential: true
+          exclude-azure-developer-cli-credential: true
+          exclude-interactive-browser-credential: true
+
+      - name: Verify signatures
+        shell: pwsh
+        run: |
+          foreach ($directory in 'win-unpacked', 'win-arm64-unpacked') {
+            $exe = "release\$directory\Demo Simulator.exe"
+            $signature = Get-AuthenticodeSignature $exe
+            if ($signature.Status -ne 'Valid') {
+              throw "Signature on $exe is '$($signature.Status)': $($signature.StatusMessage)"
+            }
+            if (-not $signature.TimeStamperCertificate) {
+              throw "Signature on $exe is not timestamped."
+            }
+            Write-Host "$directory signed by: $($signature.SignerCertificate.Subject)"
+            Write-Host "$directory timestamp: $($signature.TimeStamperCertificate.Subject)"
+          }
+
+      - name: Package
+        id: package
+        shell: pwsh
+        env:
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          New-Item -ItemType Directory -Force -Path artifacts\upload | Out-Null
+          $packages = @(
+            @{ Architecture = 'win-x64'; Directory = 'win-unpacked'; HashOutput = 'x64_sha256' }
+            @{ Architecture = 'win-arm64'; Directory = 'win-arm64-unpacked'; HashOutput = 'arm64_sha256' }
+          )
+          foreach ($package in $packages) {
+            $name = "DemoSimulator-$env:RELEASE_VERSION-$($package.Architecture)"
+            $zip = "artifacts\upload\$name.zip"
+            Compress-Archive -Path "release\$($package.Directory)\*" -DestinationPath $zip -CompressionLevel Optimal
+            $hash = (Get-FileHash $zip -Algorithm SHA256).Hash
+            "$hash  $name.zip" | Set-Content "artifacts\upload\$name.zip.sha256" -Encoding utf8
+            "$($package.HashOutput)=$hash" >> $env:GITHUB_OUTPUT
+          }
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: DemoSimulator-${{ steps.version.outputs.version }}-Windows
+          path: artifacts\upload\
+          retention-days: 30
+
+      - name: Publish release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
+          RELEASE_TAG: ${{ steps.version.outputs.tag }}
+          RELEASE_DRAFT: ${{ inputs.draft }}
+          X64_SHA256: ${{ steps.package.outputs.x64_sha256 }}
+          ARM64_SHA256: ${{ steps.package.outputs.arm64_sha256 }}
+        run: |
+          $notes = @(
+            'Signed portable Windows builds for x64 and ARM64.'
+            ''
+            'Download the ZIP for your processor, extract it, and run Demo Simulator.exe.'
+            'The executable is code-signed and timestamped. SmartScreen may still warn until the download builds reputation.'
+            ''
+            'SHA256:'
+            '```'
+            "$env:X64_SHA256  DemoSimulator-$env:RELEASE_VERSION-win-x64.zip"
+            "$env:ARM64_SHA256  DemoSimulator-$env:RELEASE_VERSION-win-arm64.zip"
+            '```'
+          ) -join "`n"
+          $releaseArgs = @(
+            $env:RELEASE_TAG
+            '--title', "Demo Simulator $env:RELEASE_TAG"
+            '--notes', $notes
+            '--generate-notes'
+            '--target', $env:GITHUB_SHA
+          )
+          if ($env:RELEASE_DRAFT -eq 'true') { $releaseArgs += '--draft' }
+          gh release view $env:RELEASE_TAG *> $null
+          if ($LASTEXITCODE -eq 0) {
+            gh release upload $env:RELEASE_TAG (Get-Item artifacts\upload\*).FullName --clobber
+          } else {
+            gh release create @releaseArgs (Get-Item artifacts\upload\*).FullName
+          }

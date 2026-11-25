@@ -111,6 +111,7 @@ export function Player({ projects, exit }: { projects: Video[]; exit: () => void
   const current = controller.current;
   const project = projects[current?.index ?? 0];
   const position = current?.video.currentTime ?? 0;
+  const progress = project.duration > 0 ? position / project.duration * 100 : 0;
   const notesCue = project.cues.filter(cue => cue.time <= position).at(-1);
   const notes = notesCue?.notes ?? project.notes ?? '';
   const controlsOpen = panel?.kind === 'timeline';
@@ -125,6 +126,7 @@ export function Player({ projects, exit }: { projects: Video[]; exit: () => void
     {cover && <img className="cover" src={cover} alt="" />}
     <section ref={controlsPanel} className={`playback-controls${controlsOpen ? ' open' : ''}`} aria-label="Playback controls" aria-hidden={!controlsOpen} inert={!controlsOpen}>
       <div className="playback-seekbar">
+        <div className="timeline-rail" /><div className="timeline-fill" style={{ width: `${progress}%` }} />
         <input ref={positionSlider} aria-label="Playback position" type="range" min={0} max={project.duration} step=".001" value={position}
           aria-valuetext={formatTime(position)} disabled={unavailable} onChange={event => current?.seek(Number(event.target.value))} />
         {project.cues.map((cue, index) => <button key={cue.id} className="playback-cue" disabled={unavailable}

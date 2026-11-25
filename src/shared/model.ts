@@ -66,6 +66,7 @@ export interface DemoAPI {
   openLegacyWorkspace(): Promise<Workspace | null>;
   currentProject(): Promise<Workspace | null>;
   saveProject(catalog: Catalog, projectId: string, saveAs: boolean): Promise<Workspace | null>;
+  deleteProject(catalog: Catalog, projectId: string): Promise<boolean>;
   importMedia(): Promise<ImportedMedia | null>;
   cancelOperation(): Promise<void>;
   fullscreen(enabled: boolean): Promise<void>;

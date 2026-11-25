@@ -1,10 +1,10 @@
-import { app, BrowserWindow, dialog, ipcMain, protocol, session } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, protocol, session, shell } from 'electron';
 import path from 'node:path';
 import { promises as fs, createReadStream } from 'node:fs';
 import { Readable } from 'node:stream';
 import { randomUUID } from 'node:crypto';
 import { Store } from './store';
-import { catalogSchema, type Workspace } from '../shared/model';
+import { catalogSchema, type Catalog, type Workspace } from '../shared/model';
 
 protocol.registerSchemesAsPrivileged([{ scheme: 'demo-media', privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true, corsEnabled: true } }]);
 const profileArgument = process.argv.find(argument => argument.startsWith('--user-data-dir='));
@@ -148,6 +148,53 @@ if (locked) app.whenReady().then(async () => {
     projectFile = destination; selectedProjectId = id;
     await remember();
     return snapshot();
+  }));
+  ipcMain.handle('project:delete', (_event, value: Catalog, id: string) => operation(async signal => {
+    const current = requiredStore();
+    const original = current.snapshot().catalog;
+    const project = original.projects.find(project => project.id === id);
+    if (!project || !Array.isArray(value?.projects) || !Array.isArray(value?.videos) ||
+      !value.projects.some(project => project.id === id)) throw new Error('Project no longer exists.');
+    const projects = value.projects.filter(project => project.id !== id);
+    const used = new Set(projects.flatMap(project => project.videos));
+    const remaining = catalogSchema.parse({ ...value, projects, videos: value.videos.filter(video => used.has(video.id)) });
+    const file = id === selectedProjectId ? projectFile : undefined;
+    const name = value.projects.find(project => project.id === id)!.name.trim() || project.name;
+    const result = await dialog.showMessageBox(window, {
+      type: 'warning', buttons: ['Cancel', 'Delete project'], defaultId: 0, cancelId: 0, noLink: true,
+      message: `Delete "${name}"?`,
+      detail: `${file ? `The project file will be moved to the Recycle Bin:\n${file}` : 'This unsaved project will be discarded.'}\n\nUnsaved changes will be discarded. Original video recordings and other projects will not be deleted.`
+    });
+    if (result.response !== 1) return false;
+    signal.throwIfAborted();
+    const previousFile = projectFile, previousId = selectedProjectId;
+    try {
+      if (remaining.projects.length) {
+        await current.save(remaining);
+        projectFile = undefined; selectedProjectId = remaining.projects[0].id;
+        await remember();
+      } else {
+        await fs.rm(path.join(app.getPath('userData'), 'workspace.json'), { force: true });
+      }
+      if (file) {
+        const stat = await fs.lstat(file).catch(error => {
+          if (error.code !== 'ENOENT') throw error;
+          return null;
+        });
+        if (stat && !stat.isFile()) throw new Error('The project path is no longer a regular file.');
+        if (stat) await shell.trashItem(file);
+      }
+    } catch (error) {
+      projectFile = previousFile; selectedProjectId = previousId;
+      if (remaining.projects.length) await current.save(original);
+      await remember();
+      throw error;
+    }
+    if (!remaining.projects.length) {
+      store = undefined; projectFile = undefined; selectedProjectId = undefined;
+      await removeDraft(current);
+    }
+    return true;
   }));
   ipcMain.handle('media:import', () => operation(async signal => {
     const result = await dialog.showOpenDialog(window, { filters: [{ name: 'Demo video (cursor-free)', extensions: ['mp4', 'webm'] }], properties: ['openFile'] });

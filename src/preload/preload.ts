@@ -6,6 +6,7 @@ const api: DemoAPI = {
   openLegacyWorkspace: () => ipcRenderer.invoke('project:legacy'),
   currentProject: () => ipcRenderer.invoke('project:current'),
   saveProject: (catalog, projectId, saveAs) => ipcRenderer.invoke('project:save', catalog, projectId, saveAs),
+  deleteProject: (catalog, projectId) => ipcRenderer.invoke('project:delete', catalog, projectId),
   importMedia: () => ipcRenderer.invoke('media:import'),
   cancelOperation: () => ipcRenderer.invoke('operation:cancel'),
   fullscreen: enabled => ipcRenderer.invoke('window:fullscreen', enabled),

@@ -12,6 +12,16 @@ Recorded-cursor removal is not implemented. Start with cursor-free recordings; a
 
 ## Quickstart
 
+### Download the signed Windows build
+
+1. Open the [latest release](https://github.com/markrussinovich/DemoSimulator/releases/latest).
+2. Download `DemoSimulator-<version>-win-x64.zip` for **Intel/AMD PCs**, or `DemoSimulator-<version>-win-arm64.zip` for **Windows on ARM**.
+3. Extract the entire ZIP into a folder, keep its files together, and run **`Demo Simulator.exe`**. No installer, Node.js, or source checkout is required.
+
+The executable inside each release ZIP is code-signed and timestamped. To inspect its signature, right-click `Demo Simulator.exe`, choose **Properties > Digital Signatures**, select the signature, and choose **Details**. Windows should report that the digital signature is OK. SmartScreen may still show a reputation warning for a new download.
+
+If no release is listed, the first signed build has not yet been published.
+
 ### Run from source
 
 Prerequisites: Windows, Git, and Node.js 22.12 or later with npm.
@@ -43,7 +53,7 @@ Run **`Demo Simulator.cmd`** from this source folder after packaging, or open **
 
 For another machine, install **`release\Demo Simulator Setup 1.1.1.exe`**, then use its desktop/Start menu shortcut. Alternatively, extract the 1.1.1 ZIP **once**, keep the extracted files together, and run `Demo Simulator.exe`. Node.js is not needed.
 
-**Do not use the old `Demo Simulator 1.0.0.exe` portable launcher.** That format decompresses Electron into a temporary directory every time it starts, causing the long delay. The new installer and extract-once ZIP avoid this. Startup also no longer waits for the previous project to load before showing the editor shell. Builds are unsigned; Windows may show a reputation warning.
+**Do not use the old `Demo Simulator 1.0.0.exe` portable launcher.** That format decompresses Electron into a temporary directory every time it starts, causing the long delay. The new installer and extract-once ZIP avoid this. Startup also no longer waits for the previous project to load before showing the editor shell. Local builds are unsigned; use the signed release downloads above for a signed executable.
 
 Measured interactive launches of the final package were **0.3–1.6 seconds**, compared with **16.2 seconds** for the old portable launcher. Restoring a saved three-video project and decoding its preview took **0.57 seconds**. The first launch immediately after a fresh build was **4.6 seconds**, so startup is not guaranteed to be instantaneous under all conditions. Bundled startup dependencies also reduce the application archive from 14.8 MB to 0.49 MB.
 
@@ -98,6 +108,10 @@ Hover-opened panels stay open while the pointer is inside and slide away when it
 
 During presentation, the real OS cursor stays hidden over the video, including while paused. It appears only over an open timeline or notes panel and error-recovery buttons; the editor keeps its normal cursors. Video playback is always muted in both the editor and player; original audio tracks remain intact in the project files. The final video holds its last frame; it never loops automatically. Use the playback controls to return to its start, or exit and play again.
 
+## Delete a project
+
+Choose **Delete project** after **Save as...** in the toolbar and confirm. Saved `.demosim` files move to the Windows Recycle Bin; unsaved projects are discarded. Original video recordings and other recovered projects are preserved. Deleting the last open project returns to the welcome screen.
+
 ## Previous projects
 
 Old `.demosim` archives open directly. For the original folder-based version, choose **? > Open a previous-version workspace...** and select its folder.
@@ -109,6 +123,20 @@ Each previous playlist becomes a multi-video project, preserving its name, order
 Explore the [development session insights (PDF)](insights/report.pdf), including the conversation timeline and usage estimates. The report was generated with [Agent Session Insights](https://github.com/markrussinovich/agent-session-insights).
 
 Raw session snapshots and machine-specific discovery data are not included. Download the HTML report and player from `insights` for interactive playback.
+
+## Signed releases
+
+The Release workflow builds, tests, signs, and publishes portable x64 and ARM64 Windows ZIPs when application changes reach `main`. Documentation and insights-only changes do not create releases. Azure Artifact Signing uses GitHub OIDC and the `release` environment; missing signing configuration fails the release instead of shipping unsigned.
+
+Versioning follows [SemanticStart](https://github.com/markrussinovich/SemanticStart): `package.json` sets the major/minor release line and minimum patch. The workflow selects the next patch after the highest existing tag on that line, or uses the package version if the line has no releases. Change the package version to start a new release line. Repeat push events for an already released commit are skipped.
+
+To request an explicit version or rehearse a draft release:
+
+```powershell
+gh workflow run release.yml -f version=1.2.0 -f draft=true
+```
+
+Leave `version` blank to select the next patch automatically. Signing and signature/timestamp verification happen before ZIP creation and SHA256 checksums. Release downloads contain the executable and required supporting files, not a standalone executable or installer. Local `npm run package` builds are not signed by this workflow.
 
 ## Build and validation
 

@@ -78,6 +78,98 @@ test(`startup hides the empty-project screen until restoration resolves (${outco
   }
 });
 }
+test('deleting an unsaved project supports cancellation and stays deleted after restart', async () => {
+  const files = page.getByRole('navigation', { name: 'Project files', exact: true });
+  const deleteButton = files.getByRole('button', { name: 'Delete project', exact: true });
+  await expect(deleteButton).toBeDisabled();
+  await page.getByRole('button', { name: 'New project', exact: true }).click();
+  await expect(deleteButton).toBeEnabled();
+  expect(await deleteButton.evaluate(element => ({
+    previous: element.previousElementSibling?.textContent,
+    next: element.nextElementSibling?.getAttribute('aria-label')
+  }))).toEqual({ previous: 'Save as...', next: 'Help' });
+  await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setContentSize(900, 600));
+  expect(await page.locator('.app-header').evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
+  await page.getByLabel('Project name', { exact: true }).fill('');
+  await app.evaluate(({ dialog }) => {
+    dialog.showMessageBox = async () => ({ response: 0, checkboxChecked: false });
+  });
+  await page.getByRole('button', { name: 'Delete project', exact: true }).click();
+  await expect(page.getByLabel('Project name', { exact: true })).toHaveValue('');
+  await expect(page.getByRole('button', { name: 'Delete project', exact: true })).toBeEnabled();
+  expect(await page.evaluate(() => window.demo.currentProject())).not.toBeNull();
+  await app.evaluate(({ dialog }) => {
+    dialog.showMessageBox = async () => ({ response: 1, checkboxChecked: false });
+  });
+  await page.getByRole('button', { name: 'Delete project', exact: true }).click();
+  await expect(page.locator('.welcome')).toBeVisible();
+  expect(await page.evaluate(() => window.demo.currentProject())).toBeNull();
+  await app.close();
+  await launchApp();
+  await expect(page.locator('.welcome')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Delete project', exact: true })).toBeDisabled();
+});
+test('deleting a saved project uses the Recycle Bin and preserves edits when recycling fails', async () => {
+  await importPlaybackVideo();
+  const recording = path.join(process.cwd(), 'tests', 'e2e', 'playback.webm');
+  const original = await fs.readFile(recording);
+  const file = path.join(root, 'delete-me.demosim');
+  await saveTo(file);
+  const saved = await fs.readFile(file);
+  await page.getByLabel('Project name', { exact: true }).fill('Unsaved project edits');
+  await app.evaluate(({ dialog, shell }) => {
+    dialog.showMessageBox = async () => ({ response: 1, checkboxChecked: false });
+    shell.trashItem = async () => { throw new Error('Recycle Bin is unavailable.'); };
+  });
+  await page.getByRole('button', { name: 'Delete project', exact: true }).click();
+  await expect(page.getByRole('alert')).toContainText('Recycle Bin is unavailable.');
+  await expect(page.getByLabel('Project name', { exact: true })).toHaveValue('Unsaved project edits');
+  expect((await page.evaluate(() => window.demo.currentProject()))!.filePath).toBe(file);
+  expect(await fs.readFile(file)).toEqual(saved);
+  await page.getByRole('button', { name: 'Dismiss', exact: true }).click();
+  await app.evaluate(({ shell }) => {
+    shell.trashItem = async file => {
+      (globalThis as typeof globalThis & { trashedProject?: string }).trashedProject = file;
+    };
+  });
+  await page.getByRole('button', { name: 'Delete project', exact: true }).click();
+  await expect(page.locator('.welcome')).toBeVisible();
+  expect(await app.evaluate(() => (globalThis as typeof globalThis & { trashedProject?: string }).trashedProject)).toBe(file);
+  expect(await fs.readFile(recording)).toEqual(original);
+});
+test('deleting a recovered project preserves other projects, their edits, shared media, and saved files', async () => {
+  const source = await Store.open(path.join(root, 'legacy-delete'));
+  const media = await source.importMedia(path.join(process.cwd(), 'tests', 'e2e', 'playback.webm'), new AbortController().signal, () => {});
+  const video: Video = { id: randomUUID(), name: 'Shared recording', media: media.media, duration: 5, width: 320, height: 180, cues: [] };
+  const projects = [
+    { id: randomUUID(), name: 'Keep this project', videos: [video.id] },
+    { id: randomUUID(), name: 'Delete this project', videos: [video.id] }
+  ];
+  await source.save({ version: 2, videos: [video], projects });
+  await app.evaluate(({ dialog }, directory) => {
+    dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [directory] });
+  }, source.path);
+  await page.getByRole('button', { name: 'Open a previous-version workspace...', exact: true }).click();
+  const file = path.join(root, 'keep.demosim');
+  await saveTo(file);
+  const saved = await fs.readFile(file);
+  await page.getByLabel('Project name', { exact: true }).fill('Edited remaining project');
+  await page.getByLabel('Recovered project', { exact: true }).selectOption(projects[1].id);
+  await app.evaluate(({ dialog, shell }) => {
+    dialog.showMessageBox = async () => ({ response: 1, checkboxChecked: false });
+    shell.trashItem = async () => { throw new Error('Must not recycle another project file.'); };
+  });
+  await page.getByRole('button', { name: 'Delete project', exact: true }).click();
+  await expect(page.getByLabel('Project name', { exact: true })).toHaveValue('Edited remaining project');
+  await expect(page.getByLabel('Video name', { exact: true })).toHaveValue(video.name);
+  await expect(page.locator('.preview')).toHaveJSProperty('readyState', 4);
+  await expect(page.locator('.save-status')).toContainText('Unsaved changes');
+  const current = await page.evaluate(() => window.demo.currentProject());
+  expect(current!.catalog.projects).toEqual([{ ...projects[0], name: 'Edited remaining project' }]);
+  expect(current!.catalog.videos).toEqual([expect.objectContaining({ id: video.id })]);
+  expect(await fs.readFile(file)).toEqual(saved);
+  expect((await Store.open(source.path)).snapshot().catalog.projects).toEqual(projects);
+});
 test('saving another recovered project prompts for its own file and cannot overwrite the first', async () => {
   const source = await Store.open(path.join(root, 'legacy'));
   const projects = [
@@ -495,6 +587,7 @@ test(`playback drawer pauses, seeks, navigates pauses, resumes, and restarts the
   }
   await page.getByLabel('Fullscreen presentation').setChecked(fullscreen);
   if (!fullscreen) await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setContentSize(900, 560));
+  const playedColor = await page.locator('.timeline-fill').evaluate(element => getComputedStyle(element).backgroundColor);
   await page.getByRole('button', { name: 'Play this video', exact: true }).click();
   const stage = page.getByTestId('stage');
   const video = page.locator('.stage video');
@@ -525,14 +618,25 @@ test(`playback drawer pauses, seeks, navigates pauses, resumes, and restarts the
     await expect(button.locator('svg')).toBeVisible();
   }
   await expect(drawer.getByRole('button', { name: /^Seek to pause / })).toHaveCount(2);
+  const slider = drawer.getByRole('slider', { name: 'Playback position', exact: true });
+  const fill = drawer.locator('.timeline-fill');
+  await expect(fill).toHaveCSS('background-color', playedColor);
+  const expectPlayedTrack = () => expect.poll(() => fill.evaluate(element => {
+    const rail = element.parentElement!.querySelector('.timeline-rail')!;
+    const input = element.parentElement!.querySelector('input')!;
+    return Math.abs(element.getBoundingClientRect().width - rail.getBoundingClientRect().width * Number(input.value) / Number(input.max));
+  })).toBeLessThan(1);
+  await expectPlayedTrack();
   await drawer.getByRole('button', { name: 'Seek to pause 2: Pause 2', exact: true }).click();
   await expect(stage).toHaveAttribute('data-state', 'manually-paused');
   await expect(video).toHaveJSProperty('currentTime', 3);
+  await expectPlayedTrack();
   await drawer.getByRole('button', { name: 'Previous pause', exact: true }).click();
   await expect(video).toHaveJSProperty('currentTime', 1);
+  await expectPlayedTrack();
   await drawer.getByRole('button', { name: 'Previous pause', exact: true }).click();
   await expect(video).toHaveJSProperty('currentTime', 0);
-  const slider = drawer.getByRole('slider', { name: 'Playback position', exact: true });
+  await expectPlayedTrack();
   const track = (await slider.boundingBox())!;
   await page.mouse.move(track.x + track.width * .1, track.y + track.height / 2);
   await page.mouse.down();
@@ -540,6 +644,7 @@ test(`playback drawer pauses, seeks, navigates pauses, resumes, and restarts the
   await page.mouse.up();
   await expect.poll(() => video.evaluate((element: HTMLVideoElement) => element.currentTime)).toBeGreaterThan(2);
   await expect.poll(() => video.evaluate((element: HTMLVideoElement) => element.currentTime)).toBeLessThan(3);
+  await expectPlayedTrack();
   await drawer.getByRole('button', { name: 'Previous pause', exact: true }).click();
   await expect(video).toHaveJSProperty('currentTime', 1);
   await drawer.getByRole('button', { name: 'Play', exact: true }).click();
@@ -555,12 +660,13 @@ test(`playback drawer pauses, seeks, navigates pauses, resumes, and restarts the
   await page.keyboard.press('Space');
   await expect(drawer).toHaveCount(0);
   await expect(stage).toHaveAttribute('data-state', 'cue-paused');
-  await expect(video).toHaveJSProperty('currentTime', 1);
+  await expect.poll(() => video.evaluate((element: HTMLVideoElement) => Math.abs(element.currentTime - 1))).toBeLessThan(.001);
   await page.keyboard.press('Control+Space');
   await drawer.getByRole('button', { name: 'Seek to pause 2: Pause 2', exact: true }).click();
   await page.keyboard.press('Space');
   await expect(stage).toHaveAttribute('data-state', 'playlist-ended');
   await page.keyboard.press('Control+Space');
+  await expectPlayedTrack();
   await drawer.getByRole('button', { name: 'Start of video', exact: true }).click();
   await expect(stage).toHaveAttribute('data-state', 'manually-paused');
   await expect(stage).toHaveAttribute('data-index', '0');
