@@ -78,6 +78,30 @@ test(`startup hides the empty-project screen until restoration resolves (${outco
   }
 });
 }
+test('project playback controls stay beside the name and Play is disabled without videos', async () => {
+  await importPlaybackVideo();
+  const play = page.getByRole('button', { name: 'Play project', exact: true });
+  await expect(play).toBeEnabled();
+  for (const width of [1280, 900]) {
+    await app.evaluate(({ BrowserWindow }, width) => BrowserWindow.getAllWindows()[0].setContentSize(width, 700), width);
+    await expect.poll(() => page.locator('.project-bar').evaluate(element => {
+      const name = element.querySelector('input[aria-label="Project name"]')!.getBoundingClientRect();
+      const play = element.querySelector('button')!.getBoundingClientRect();
+      const fullscreen = element.querySelector('.fullscreen-option')!.getBoundingClientRect();
+      const status = element.querySelector('.save-status')!.getBoundingClientRect();
+      return {
+        besideName: play.left >= name.right && play.left - name.right <= 32,
+        order: fullscreen.left >= play.right && status.left >= fullscreen.right,
+        fits: element.scrollWidth <= element.clientWidth
+      };
+    })).toEqual({ besideName: true, order: true, fits: true });
+  }
+  await page.getByRole('button', { name: 'Remove video', exact: true }).click();
+  await expect(page.locator('.video-list li')).toHaveCount(0);
+  await expect(play).toBeDisabled();
+  await page.getByRole('button', { name: 'New project', exact: true }).click();
+  await expect(play).toBeDisabled();
+});
 test('deleting an unsaved project supports cancellation and stays deleted after restart', async () => {
   const files = page.getByRole('navigation', { name: 'Project files', exact: true });
   const deleteButton = files.getByRole('button', { name: 'Delete project', exact: true });

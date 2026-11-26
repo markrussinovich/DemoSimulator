@@ -251,9 +251,9 @@ export function App() {
       <div className="project-bar">
         <label className="project-title"><span>Project</span><input aria-label="Project name" value={project.name} disabled={busy} maxLength={200}
           onChange={event => setCatalog(current => ({ ...current, projects: current.projects.map(p => p.id === projectId ? { ...p, name: event.target.value } : p) }))} /></label>
-        <span className={`save-status${dirty ? ' unsaved' : ''}`} title={document?.filePath ?? 'Choose a project file with Save'}>{dirty ? 'Unsaved changes' : 'Saved'}{document?.filePath ? ` - ${document.filePath.split(/[\\/]/).pop()}` : ' - choose a file with Save'}</span>
         <button className="primary" disabled={busy || !ordered.length} onClick={() => void play(ordered)}>Play project</button>
         <label className="fullscreen-option">Fullscreen<input aria-label="Fullscreen presentation" type="checkbox" checked={fullscreen} disabled={busy} onChange={event => setFullscreen(event.target.checked)} /></label>
+        <span className={`save-status${dirty ? ' unsaved' : ''}`} title={document?.filePath ?? 'Choose a project file with Save'}>{dirty ? 'Unsaved changes' : 'Saved'}{document?.filePath ? ` - ${document.filePath.split(/[\\/]/).pop()}` : ' - choose a file with Save'}</span>
       </div>
       {catalog.projects.length > 1 && <div className="legacy-projects"><label>Recovered project <select aria-label="Recovered project" value={projectId} disabled={busy} onChange={event => {
         preview.current?.pause(); setProjectId(event.target.value); setSelectedIndex(0);
