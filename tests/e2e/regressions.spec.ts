@@ -201,6 +201,8 @@ test('second-monitor snapshot media survives changing projects and is cleaned up
   const audience = await startAudience();
   const stage = audience.getByTestId('stage');
   const controls = page.getByRole('region', { name: 'Audience presentation', exact: true });
+  // Keep native discard-dialog focus restoration out of this media-lifetime test.
+  await page.evaluate(() => { window.confirm = () => true; });
   await page.getByRole('button', { name: 'New project', exact: true }).click();
   await expect(page.locator('.video-list li')).toHaveCount(0);
   await expect(controls).toBeVisible();
