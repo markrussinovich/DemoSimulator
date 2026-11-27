@@ -22,6 +22,7 @@ test.beforeEach(async () => {
 });
 test.afterEach(async () => {
   if (app) {
+    if (!page.isClosed()) await expect(page.locator('.notice[role="status"]')).toHaveCount(0);
     await app.evaluate(({ dialog }) => { dialog.showMessageBoxSync = () => 1; });
     await app.close();
   }
@@ -44,6 +45,198 @@ async function importPlaybackVideo() {
   await expect(page.getByLabel('Video name', { exact: true })).toHaveValue('playback');
   await expect(page.locator('.preview')).toHaveJSProperty('readyState', 4);
 }
+async function chooseAudienceDisplay() {
+  const id = await app.evaluate(({ screen }) => {
+    const displays = screen.getAllDisplays();
+    const audience = { ...displays[0], id: -4242, label: 'Test audience display' };
+    screen.getAllDisplays = () => [...displays, audience];
+    screen.emit('display-added', {}, audience);
+    return audience.id;
+  });
+  await page.getByLabel('Presentation display', { exact: true }).selectOption(String(id));
+  await expect(page.getByLabel('Fullscreen presentation', { exact: true })).toBeChecked();
+  await expect(page.getByLabel('Fullscreen presentation', { exact: true })).toBeDisabled();
+}
+async function startAudience(button = 'Play project') {
+  const opened = app.waitForEvent('window');
+  await page.getByRole('button', { name: button, exact: true }).click();
+  const audience = await opened;
+  await expect(audience.getByTestId('stage')).toHaveAttribute('data-state', 'ready');
+  await expect.poll(() => app.evaluate(({ BrowserWindow }) =>
+    BrowserWindow.getAllWindows().find(window => window.webContents.getURL().includes('audience=1'))!.isFullScreen())).toBe(true);
+  await expect(page.getByRole('region', { name: 'Audience presentation', exact: true })).toBeVisible();
+  await focusSpeaker();
+  return audience;
+}
+async function focusSpeaker() {
+  await app.evaluate(({ BrowserWindow }) => {
+    const speaker = BrowserWindow.getAllWindows().find(window => !window.webContents.getURL().includes('audience=1'))!;
+    speaker.focus(); speaker.webContents.focus();
+  });
+  await expect.poll(() => page.evaluate(() => document.hasFocus())).toBe(true);
+  await expect.poll(() => app.evaluate(({ BrowserWindow }) =>
+    BrowserWindow.getAllWindows().some(window => !window.webContents.getURL().includes('audience=1') && window.isFocused()))).toBe(true);
+}
+test('second-monitor presentation keeps notes private, freezes edits, and advances editor selection on stop', async () => {
+  await importPlaybackVideo();
+  await page.getByLabel('Video name', { exact: true }).fill('First clip');
+  await page.getByRole('button', { name: 'Presenter notes', exact: true }).click();
+  await page.getByRole('textbox', { name: 'Presenter notes', exact: true }).fill('Private opening notes');
+  await page.locator('.preview').evaluate((video: HTMLVideoElement) => { video.currentTime = 1; });
+  await page.getByRole('button', { name: 'Add pause point', exact: true }).click();
+  await page.getByRole('textbox', { name: 'Presenter notes', exact: true }).fill('Private pause notes');
+  await page.getByRole('button', { name: 'Add video', exact: true }).click();
+  await expect(page.locator('.video-list li')).toHaveCount(2);
+  await expect(page.locator('.preview')).toHaveJSProperty('readyState', 4);
+  await page.getByLabel('Video name', { exact: true }).fill('Second clip');
+  await page.getByLabel('Fullscreen presentation', { exact: true }).uncheck();
+  await chooseAudienceDisplay();
+  let audience = await startAudience();
+  let stage = audience.getByTestId('stage');
+  const controls = page.getByRole('region', { name: 'Audience presentation', exact: true });
+  const liveNotes = page.getByRole('complementary', { name: 'Live presentation notes', exact: true });
+  await expect(liveNotes).toContainText('Private opening notes');
+  await expect(audience.locator('body')).toHaveText('');
+  await expect(audience.locator('button, input, textarea, aside')).toHaveCount(0);
+  await audience.keyboard.press('Control+Space');
+  await expect(audience.locator('button, input, textarea, aside')).toHaveCount(0);
+  await page.locator('.video-list button').first().click();
+  await page.getByLabel('Video name', { exact: true }).fill('Edited for next time');
+  await page.getByRole('textbox', { name: 'Presenter notes', exact: true }).fill('Edited opening notes');
+  await page.getByRole('button', { name: 'Move down', exact: true }).click();
+  await expect(controls).toContainText('First clip');
+  await expect(liveNotes).toContainText('Private opening notes');
+  await audience.locator('.stage video').evaluate((video: HTMLVideoElement) => { video.playbackRate = 8; });
+  await focusSpeaker();
+  await controls.getByRole('button', { name: 'Resume presentation', exact: true }).click();
+  await expect(stage).toHaveAttribute('data-state', 'cue-paused');
+  await expect(controls.getByRole('status', { name: 'Presentation status' })).toHaveText('Paused at Pause 1');
+  await expect(liveNotes).toContainText('Private pause notes');
+  await expect.poll(() => audience.locator('.stage video').evaluate((video: HTMLVideoElement) => Math.abs(video.currentTime - 1))).toBeLessThan(.001);
+  await page.getByLabel('Selected pause point', { exact: true }).selectOption({ label: '1. Pause 1' });
+  await page.getByLabel('Pause name', { exact: true }).fill('Renamed for next time');
+  await expect(controls.getByRole('status', { name: 'Presentation status' })).toHaveText('Paused at Pause 1');
+  await controls.getByRole('button', { name: 'Resume presentation', exact: true }).click();
+  await expect(stage).toHaveAttribute('data-state', 'item-ended');
+  await expect(controls.getByRole('status', { name: 'Presentation status' })).toHaveText('Video ended - next video available');
+  await controls.getByRole('button', { name: 'Stop presenting', exact: true }).click();
+  await expect(controls).toHaveCount(0);
+  await expect(page.getByLabel('Video name', { exact: true })).toHaveValue('Second clip');
+  await expect(page.locator('.video-list button').first()).toHaveAttribute('aria-current', 'true');
+  await page.getByLabel('Presentation display', { exact: true }).selectOption('');
+  await expect(page.getByLabel('Fullscreen presentation', { exact: true })).not.toBeChecked();
+  await page.getByLabel('Presentation display', { exact: true }).selectOption('-4242');
+  await page.locator('.video-list button').last().click();
+  audience = await startAudience('Play this video');
+  stage = audience.getByTestId('stage');
+  await expect(controls).toContainText('Edited for next time');
+  await expect(liveNotes).toContainText('Edited opening notes');
+  await audience.locator('.stage video').evaluate((video: HTMLVideoElement) => { video.playbackRate = 8; });
+  await controls.getByRole('button', { name: 'Resume presentation', exact: true }).click();
+  await expect(stage).toHaveAttribute('data-state', 'cue-paused');
+  await expect(controls.getByRole('status', { name: 'Presentation status' })).toHaveText('Paused at Renamed for next time');
+  await controls.getByRole('button', { name: 'Resume presentation', exact: true }).click();
+  await expect(stage).toHaveAttribute('data-state', 'playlist-ended');
+  await controls.getByRole('button', { name: 'Stop presenting', exact: true }).click();
+  await expect(controls).toHaveCount(0);
+  await expect(page.getByLabel('Video name', { exact: true })).toHaveValue('Edited for next time');
+});
+test('second-monitor focus stays active between its windows, pauses outside, and stops on display disconnect', async () => {
+  await importPlaybackVideo();
+  await chooseAudienceDisplay();
+  const audience = await startAudience();
+  const stage = audience.getByTestId('stage');
+  const controls = page.getByRole('region', { name: 'Audience presentation', exact: true });
+  await page.getByLabel('Project name', { exact: true }).fill('Editable project');
+  await page.getByLabel('Project name', { exact: true }).press('Space');
+  await expect(stage).toHaveAttribute('data-state', 'ready');
+  await audience.locator('.stage video').evaluate((video: HTMLVideoElement) => { video.playbackRate = .1; });
+  await controls.getByRole('button', { name: 'Resume presentation', exact: true }).click();
+  await expect(stage).toHaveAttribute('data-state', 'playing');
+  await app.evaluate(({ BrowserWindow }) => {
+    BrowserWindow.getAllWindows().find(window => window.webContents.getURL().includes('audience=1'))!.focus();
+  });
+  await expect(stage).toHaveAttribute('data-state', 'playing');
+  await app.evaluate(async ({ BrowserWindow }) => {
+    const other = new BrowserWindow({ width: 200, height: 200, title: 'Focus test', webPreferences: { nodeIntegration: false } });
+    await other.loadURL('data:text/html,Focus test');
+    other.focus();
+  });
+  await expect(stage).toHaveAttribute('data-state', 'focus-paused');
+  await expect(controls.getByRole('status', { name: 'Presentation status' })).toHaveText('Paused - switched away');
+  await app.evaluate(({ BrowserWindow }) => {
+    const windows = BrowserWindow.getAllWindows();
+    const speaker = windows.find(window => !window.webContents.getURL().includes('audience=1') && !window.webContents.getURL().startsWith('data:'))!;
+    windows.find(window => window.webContents.getURL().startsWith('data:'))!.destroy();
+    speaker.focus();
+  });
+  await expect(stage).toHaveAttribute('data-state', 'focus-paused');
+  await controls.getByRole('button', { name: 'Resume presentation', exact: true }).click();
+  await expect(stage).toHaveAttribute('data-state', 'playing');
+  await app.evaluate(({ screen }) => {
+    const displays = screen.getAllDisplays();
+    const removed = displays.find(display => display.id === -4242)!;
+    screen.getAllDisplays = () => displays.filter(display => display.id !== -4242);
+    screen.emit('display-removed', {}, removed);
+  });
+  await expect(controls).toHaveCount(0);
+  await expect(page.getByRole('alert')).toContainText('Audience display disconnected');
+  await expect(page.getByLabel('Project name', { exact: true })).toHaveValue('Editable project ');
+  await chooseAudienceDisplay();
+  await startAudience();
+  await app.evaluate(({ screen, BrowserWindow }) => {
+    const audience = screen.getAllDisplays().find(display => display.id === -4242)!;
+    screen.getDisplayMatching = () => audience;
+    BrowserWindow.getAllWindows().find(window => !window.webContents.getURL().includes('audience=1'))!.emit('move');
+  });
+  await expect(controls).toHaveCount(0);
+  await expect(page.getByRole('alert')).toContainText('Presenter window moved to the audience display');
+});
+test('second-monitor snapshot media survives changing projects and is cleaned up after stopping', async () => {
+  await importPlaybackVideo();
+  await page.getByRole('button', { name: 'Add video', exact: true }).click();
+  await expect(page.locator('.video-list li')).toHaveCount(2);
+  await expect(page.locator('.preview')).toHaveJSProperty('readyState', 4);
+  const source = (await page.evaluate(() => window.demo.currentProject()))!.path;
+  await chooseAudienceDisplay();
+  const audience = await startAudience();
+  const stage = audience.getByTestId('stage');
+  const controls = page.getByRole('region', { name: 'Audience presentation', exact: true });
+  await page.getByRole('button', { name: 'New project', exact: true }).click();
+  await expect(page.locator('.video-list li')).toHaveCount(0);
+  await focusSpeaker();
+  await expect(controls).toBeVisible();
+  await fs.access(source);
+  await audience.locator('.stage video').evaluate((video: HTMLVideoElement) => { video.playbackRate = 8; });
+  await controls.getByRole('button', { name: 'Resume presentation', exact: true }).click();
+  await expect(stage).toHaveAttribute('data-state', 'item-ended');
+  await controls.getByRole('button', { name: 'Next presentation video', exact: true }).click();
+  await expect(stage).toHaveAttribute('data-index', '1');
+  await expect(stage).toHaveAttribute('data-state', 'playing');
+  await controls.getByRole('button', { name: 'Stop presenting', exact: true }).click();
+  await expect(controls).toHaveCount(0);
+  await expect(page.locator('.video-list li')).toHaveCount(0);
+  await expect.poll(() => fs.access(source).then(() => true, () => false)).toBe(false);
+});
+test('stopping single-screen presentation after a video ends selects the next editor video', async () => {
+  await importPlaybackVideo();
+  await page.getByLabel('Video name', { exact: true }).fill('First clip');
+  await page.getByRole('button', { name: 'Add video', exact: true }).click();
+  await expect(page.locator('.video-list li')).toHaveCount(2);
+  await expect(page.locator('.preview')).toHaveJSProperty('readyState', 4);
+  await page.getByLabel('Video name', { exact: true }).fill('Second clip');
+  await page.locator('.video-list button').first().click();
+  await page.getByRole('button', { name: 'Play this video', exact: true }).click();
+  const stage = page.getByTestId('stage');
+  await expect(stage).toHaveAttribute('data-state', 'ready');
+  await app.evaluate(({ BrowserWindow }) => { BrowserWindow.getAllWindows()[0].focus(); BrowserWindow.getAllWindows()[0].webContents.focus(); });
+  await page.locator('.stage video').evaluate((video: HTMLVideoElement) => { video.playbackRate = 8; });
+  await page.keyboard.press('Space');
+  await expect(stage).toHaveAttribute('data-state', 'playlist-ended');
+  await page.keyboard.press('Escape');
+  await expect(stage).toHaveCount(0);
+  await expect(page.getByLabel('Video name', { exact: true })).toHaveValue('Second clip');
+});
 for (const outcome of ['project', 'empty', 'error'] as const) {
 test(`startup hides the empty-project screen until restoration resolves (${outcome})`, async () => {
   if (outcome === 'project') {
@@ -78,6 +271,69 @@ test(`startup hides the empty-project screen until restoration resolves (${outco
   }
 });
 }
+for (const picker of ['project', 'video', 'legacy'] as const) {
+test(`file picker does not show loading before selection and cancellation (${picker})`, async () => {
+  await page.getByRole('button', { name: 'New project', exact: true }).click();
+  await saveTo(path.join(root, 'picker.demosim'));
+  await app.evaluate(({ dialog, ipcMain }) => {
+    dialog.showOpenDialog = () => new Promise(resolve => {
+      ipcMain.once('test:file-picked', (_event, result) => resolve(result));
+    });
+  });
+  try {
+    if (picker === 'legacy') {
+      await page.getByRole('button', { name: 'Help', exact: true }).click();
+      await page.getByRole('button', { name: 'Open a previous-version workspace...', exact: true }).click();
+    } else {
+      await page.getByRole('button', { name: picker === 'project' ? 'Open project' : 'Add video', exact: true }).click();
+    }
+    await expect(page.getByRole('button', { name: 'New project', exact: true })).toBeDisabled();
+    await expect(page.locator('.notice[role="status"]')).toHaveCount(0);
+  } finally {
+    await app.evaluate(({ ipcMain }) => ipcMain.emit('test:file-picked', {}, { canceled: true, filePaths: [] }));
+  }
+  await expect(page.getByRole('button', { name: 'New project', exact: true })).toBeEnabled();
+  await expect(page.locator('.notice[role="status"]')).toHaveCount(0);
+  await expect(page.getByLabel('Project name', { exact: true })).toHaveValue('Untitled project');
+});
+}
+test('project loading starts after file selection and remains visible while reading the file', async () => {
+  await page.getByRole('button', { name: 'New project', exact: true }).click();
+  const file = path.join(root, 'picker.demosim');
+  await saveTo(file);
+  await app.evaluate(({ dialog, ipcMain }) => {
+    dialog.showOpenDialog = () => new Promise(resolve => {
+      ipcMain.once('test:file-picked', (_event, result) => {
+        if (!result.canceled) {
+          const fs = process.getBuiltinModule('fs').promises;
+          const mkdir = fs.mkdir;
+          fs.mkdir = (async (...args: Parameters<typeof mkdir>) => {
+            fs.mkdir = mkdir;
+            await new Promise<void>(resolve => ipcMain.once('test:load-ready', resolve));
+            return mkdir(...args);
+          }) as typeof mkdir;
+        }
+        resolve(result);
+      });
+    });
+  });
+  try {
+    await page.getByRole('button', { name: 'Open project', exact: true }).click();
+    await expect(page.getByRole('button', { name: 'New project', exact: true })).toBeDisabled();
+    await expect(page.locator('.notice[role="status"]')).toHaveCount(0);
+    await app.evaluate(({ ipcMain }, file) => ipcMain.emit('test:file-picked', {}, { canceled: false, filePaths: [file] }), file);
+    await expect(page.locator('.notice[role="status"]')).toContainText('Loading...');
+    await expect(page.getByRole('button', { name: 'New project', exact: true })).toBeDisabled();
+  } finally {
+    await app.evaluate(({ ipcMain }) => {
+      ipcMain.emit('test:file-picked', {}, { canceled: true, filePaths: [] });
+      ipcMain.emit('test:load-ready');
+    });
+  }
+  await expect(page.getByRole('button', { name: 'New project', exact: true })).toBeEnabled();
+  await expect(page.locator('.notice[role="status"]')).toHaveCount(0);
+  await expect(page.getByRole('alert')).toHaveCount(0);
+});
 test('project playback controls stay beside the name and Play is disabled without videos', async () => {
   await importPlaybackVideo();
   const play = page.getByRole('button', { name: 'Play project', exact: true });
@@ -612,6 +868,17 @@ test(`playback drawer pauses, seeks, navigates pauses, resumes, and restarts the
   await page.getByLabel('Fullscreen presentation').setChecked(fullscreen);
   if (!fullscreen) await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setContentSize(900, 560));
   const playedColor = await page.locator('.timeline-fill').evaluate(element => getComputedStyle(element).backgroundColor);
+  const editorRail = await page.locator('.timeline-rail').evaluate(element => {
+    const style = getComputedStyle(element);
+    return { color: style.backgroundColor, height: style.height };
+  });
+  const editorMarker = page.locator('.pause-marker').first();
+  const markerStyle = await editorMarker.evaluate(element => {
+    const style = getComputedStyle(element);
+    return { color: style.backgroundColor, text: style.color, height: style.height };
+  });
+  await editorMarker.hover();
+  const markerHoverColor = await editorMarker.evaluate(element => getComputedStyle(element).backgroundColor);
   await page.getByRole('button', { name: 'Play this video', exact: true }).click();
   const stage = page.getByTestId('stage');
   const video = page.locator('.stage video');
@@ -642,6 +909,27 @@ test(`playback drawer pauses, seeks, navigates pauses, resumes, and restarts the
     await expect(button.locator('svg')).toBeVisible();
   }
   await expect(drawer.getByRole('button', { name: /^Seek to pause / })).toHaveCount(2);
+  await expect(drawer.locator('.timeline-rail')).toHaveCSS('background-color', editorRail.color);
+  await expect(drawer.locator('.timeline-rail')).toHaveCSS('height', editorRail.height);
+  const railContrast = await drawer.locator('.timeline-rail').evaluate(element => {
+    const luminance = (color: string) => {
+      const [r, g, b] = color.match(/[\d.]+/g)!.slice(0, 3).map(value => {
+        const channel = Number(value) / 255;
+        return channel <= .04045 ? channel / 12.92 : ((channel + .055) / 1.055) ** 2.4;
+      });
+      return .2126 * r + .7152 * g + .0722 * b;
+    };
+    const rail = luminance(getComputedStyle(element).backgroundColor);
+    const background = luminance(getComputedStyle(element.closest('.playback-controls')!).backgroundColor);
+    return (Math.max(rail, background) + .05) / (Math.min(rail, background) + .05);
+  });
+  expect(railContrast).toBeGreaterThanOrEqual(3);
+  const playbackMarker = drawer.locator('.playback-cue').first();
+  await expect(playbackMarker).toHaveCSS('background-color', markerStyle.color);
+  await expect(playbackMarker).toHaveCSS('color', markerStyle.text);
+  await expect(playbackMarker).toHaveCSS('height', markerStyle.height);
+  await playbackMarker.hover();
+  await expect(playbackMarker).toHaveCSS('background-color', markerHoverColor);
   const slider = drawer.getByRole('slider', { name: 'Playback position', exact: true });
   const fill = drawer.locator('.timeline-fill');
   await expect(fill).toHaveCSS('background-color', playedColor);
@@ -702,8 +990,91 @@ test(`playback drawer pauses, seeks, navigates pauses, resumes, and restarts the
   await expect(stage).toHaveCount(0);
 });
 }
+for (const external of [false, true]) {
+test(`final media update cannot rewind to an unconsumed cue and one resume starts the next video (external: ${external})`, async () => {
+  await importPlaybackVideo();
+  await page.locator('.preview').evaluate((video: HTMLVideoElement) => { video.currentTime = 4; });
+  await page.getByRole('button', { name: 'Add pause point', exact: true }).click();
+  await page.getByRole('button', { name: 'Add video', exact: true }).click();
+  await expect(page.locator('.video-list li')).toHaveCount(2);
+  await expect(page.locator('.preview')).toHaveJSProperty('readyState', 4);
+  const secondMedia = await page.locator('.preview').getAttribute('src');
+  let playback = page;
+  if (external) {
+    await chooseAudienceDisplay();
+    playback = await startAudience();
+  } else {
+    await page.getByRole('button', { name: 'Play project', exact: true }).click();
+    await focusSpeaker();
+  }
+  const stage = playback.getByTestId('stage');
+  const video = playback.locator('.stage video');
+  await expect(stage).toHaveAttribute('data-state', 'ready');
+  await video.evaluate((element: HTMLVideoElement) => { element.playbackRate = .1; });
+  if (external) await page.getByRole('button', { name: 'Resume presentation', exact: true }).click();
+  else await page.keyboard.press('Space');
+  await expect(stage).toHaveAttribute('data-state', 'playing');
+  await video.evaluate((element: HTMLVideoElement) => { element.currentTime = element.duration; });
+  await expect(stage).toHaveAttribute('data-state', 'item-ended');
+  await expect(video).toHaveJSProperty('ended', true);
+  expect(await video.evaluate((element: HTMLVideoElement) => element.currentTime)).toBe(5);
+  await video.evaluate((element: HTMLVideoElement) => { element.dispatchEvent(new Event('timeupdate')); });
+  await expect(stage).toHaveAttribute('data-index', '0');
+  await expect(stage).toHaveAttribute('data-state', 'item-ended');
+  if (external) await page.getByRole('button', { name: 'Next presentation video', exact: true }).click();
+  else await page.keyboard.press('Space');
+  await expect(stage).toHaveAttribute('data-index', '1');
+  await expect(stage).toHaveAttribute('data-state', 'playing');
+  await expect(video).toHaveJSProperty('paused', false);
+  expect((await video.getAttribute('src'))!.split('?')[0]).toBe(secondMedia);
+});
+}
+test('two-video playback advances without restarting and edge hover recovers after focus returns', async () => {
+  await importPlaybackVideo();
+  const firstSource = await page.locator('.preview').getAttribute('src');
+  await page.getByRole('button', { name: 'Add video', exact: true }).click();
+  await expect(page.locator('.video-list li')).toHaveCount(2);
+  await expect(page.locator('.preview')).toHaveJSProperty('readyState', 4);
+  const secondSource = await page.locator('.preview').getAttribute('src');
+  expect(secondSource).not.toBe(firstSource);
+  await page.getByRole('button', { name: 'Play project', exact: true }).click();
+  const stage = page.getByTestId('stage');
+  const video = page.locator('.stage video');
+  const drawer = page.getByRole('region', { name: 'Playback controls', exact: true });
+  await expect(stage).toHaveAttribute('data-state', 'ready');
+  await expect(video).toHaveAttribute('src', firstSource!);
+  await app.evaluate(({ BrowserWindow }) => { BrowserWindow.getAllWindows()[0].focus(); BrowserWindow.getAllWindows()[0].webContents.focus(); });
+  await expect.poll(() => page.evaluate(() => document.hasFocus())).toBe(true);
+  await page.clock.install({ time: new Date('2026-01-01T00:00:00Z') });
+  await page.clock.pauseAt(new Date('2026-01-01T00:00:01Z'));
+  await video.evaluate((element: HTMLVideoElement) => { element.playbackRate = 8; });
+  await page.keyboard.press('Space');
+  await expect(stage).toHaveAttribute('data-state', 'item-ended');
+  const { width, height } = await page.evaluate(() => ({ width: innerWidth, height: innerHeight }));
+  await page.mouse.move(width / 2, height - 2);
+  await page.clock.runFor(250);
+  await page.evaluate(() => window.dispatchEvent(new Event('blur')));
+  await page.clock.runFor(1000);
+  await expect(drawer).toHaveCount(0);
+  await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+  await page.clock.runFor(499);
+  await expect(drawer).toHaveCount(0);
+  await page.clock.runFor(1);
+  await expect(drawer).toBeVisible();
+  await expect(drawer.getByRole('button', { name: 'Next video', exact: true })).toBeEnabled();
+  await page.keyboard.press('Space');
+  await expect(stage).toHaveAttribute('data-index', '1');
+  await expect(stage).toHaveAttribute('data-state', 'playing');
+  await expect(video).toHaveAttribute('src', secondSource!);
+  await expect(video).toHaveJSProperty('paused', false);
+  await expect(stage).toHaveAttribute('data-state', 'playlist-ended');
+  await page.keyboard.press('Space');
+  await expect(stage).toHaveAttribute('data-index', '1');
+  await expect(video).toHaveAttribute('src', secondSource!);
+  await expect(video).toHaveJSProperty('paused', true);
+});
 for (const fullscreen of [false, true]) {
-test(`presentation edge dwell opens panels after one second and dismisses without resuming (fullscreen: ${fullscreen})`, async () => {
+test(`presentation edge dwell opens panels after half a second and dismisses without resuming (fullscreen: ${fullscreen})`, async () => {
   await importPlaybackVideo();
   await page.getByRole('button', { name: 'Presenter notes', exact: true }).click();
   await page.getByRole('textbox', { name: 'Presenter notes', exact: true }).fill('Default presentation talking points.');
@@ -724,13 +1095,13 @@ test(`presentation edge dwell opens panels after one second and dismisses withou
   await page.keyboard.press('Space');
   await expect(stage).toHaveAttribute('data-state', 'playing');
   await page.mouse.move(width / 2, height - 2);
-  await page.clock.runFor(600);
+  await page.clock.runFor(250);
   await page.mouse.move(width / 2, height / 2);
   await page.clock.runFor(1000);
   await expect(drawer).toHaveCount(0);
   await expect(stage).toHaveAttribute('data-state', 'playing');
   await page.mouse.move(width / 2, height - 2);
-  await page.clock.runFor(999);
+  await page.clock.runFor(499);
   await expect(drawer).toHaveCount(0);
   await page.mouse.move(width / 2 + 20, height - 2);
   await page.clock.runFor(1);
@@ -746,7 +1117,7 @@ test(`presentation edge dwell opens panels after one second and dismisses withou
   await expect(drawer).toHaveCount(0);
   await expect(stage).toHaveAttribute('data-state', 'manually-paused');
   await page.mouse.move(width - 2, height / 2);
-  await page.clock.runFor(999);
+  await page.clock.runFor(499);
   await expect(notes).toHaveCount(0);
   await page.clock.runFor(1);
   await expect(notes).toBeVisible();
@@ -764,7 +1135,7 @@ test(`presentation edge dwell opens panels after one second and dismisses withou
   await expect(notes).toHaveCount(0);
   await expect(video).toHaveJSProperty('paused', true);
   await page.mouse.move(width - 2, height / 2);
-  await page.clock.runFor(1000);
+  await page.clock.runFor(500);
   await expect(notes).toBeVisible();
   await page.keyboard.press('Space');
   await expect(stage).toHaveAttribute('data-state', 'playing');
@@ -772,7 +1143,7 @@ test(`presentation edge dwell opens panels after one second and dismisses withou
   await page.clock.runFor(1500);
   await expect(notes).toHaveCount(0);
   await page.mouse.move(width / 2, height - 2);
-  await page.clock.runFor(500);
+  await page.clock.runFor(250);
   await page.evaluate(() => window.dispatchEvent(new Event('blur')));
   await page.clock.runFor(1000);
   await expect(drawer).toHaveCount(0);

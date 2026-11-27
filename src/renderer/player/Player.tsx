@@ -1,12 +1,18 @@
 import { useCallback, useEffect, useRef, useState, type PointerEvent } from 'react';
-import { mediaUrl, type Video } from '../../shared/model';
+import { mediaUrl, type PlaybackResult, type Video } from '../../shared/model';
 import { PlaybackController } from './controller';
 import { formatTime } from '../editor/Timeline';
 
 type PanelKind = 'timeline' | 'notes';
 type Panel = { kind: PanelKind; hover: boolean };
+type PointerPosition = { x: number; y: number; buttons: number };
 
-export function Player({ projects, exit }: { projects: Video[]; exit: () => void }) {
+export function Player({ projects, exit, audienceId, initialFocus = true }: {
+  projects: Video[]; exit: (result: PlaybackResult) => void; audienceId?: string; initialFocus?: boolean;
+}) {
+  const focused = useRef(initialFocus);
+  const stage = useRef<HTMLDivElement>(null);
+  const pointer = useRef<PointerPosition | null>(null);
   const video = useRef<HTMLVideoElement>(null);
   const controller = useRef<PlaybackController | null>(null);
   const [, render] = useState(0);
@@ -40,33 +46,45 @@ export function Player({ projects, exit }: { projects: Video[]; exit: () => void
   }, [clearHover]);
   const resume = () => { showPanel(null); controller.current?.resume(); };
   const leaveStage = () => {
+    pointer.current = null;
     clearHover();
     if (visiblePanel.current?.hover) showPanel(null);
   };
-  const movePointer = (event: PointerEvent<HTMLDivElement>) => {
-    if (event.pointerType !== 'mouse') return;
-    if (event.buttons) { clearHover(); return; }
-    const bounds = event.currentTarget.getBoundingClientRect();
+  const updatePointer = useCallback((position: PointerPosition) => {
+    if (position.buttons) { clearHover(); return; }
+    const bounds = stage.current?.getBoundingClientRect();
+    if (!bounds) return;
     const active = visiblePanel.current;
     const inside = active?.kind === 'timeline'
-      ? event.clientY >= bounds.bottom - (controlsPanel.current?.offsetHeight ?? 0)
-      : active?.kind === 'notes' && event.clientX >= bounds.right - (notesPanel.current?.offsetWidth ?? 0);
+      ? position.y >= bounds.bottom - (controlsPanel.current?.offsetHeight ?? 0)
+      : active?.kind === 'notes' && position.x >= bounds.right - (notesPanel.current?.offsetWidth ?? 0);
     if (active && inside) { clearHover(); return; }
     if (active?.hover) showPanel(null);
-    const kind = event.clientY >= bounds.bottom - 12 ? 'timeline' : event.clientX >= bounds.right - 12 ? 'notes' : null;
+    const kind = position.y >= bounds.bottom - 12 ? 'timeline' : position.x >= bounds.right - 12 ? 'notes' : null;
     if (!kind || visiblePanel.current?.kind === kind) { clearHover(); return; }
     if (hover.current?.kind === kind) return;
     clearHover();
     hover.current = { kind, timer: setTimeout(() => {
       hover.current = null;
       if (document.hasFocus() && controller.current && !['loading', 'error'].includes(controller.current.state)) showPanel(kind, true);
-    }, 1000) };
+    }, 500) };
+  }, [clearHover, showPanel]);
+  const movePointer = (event: PointerEvent<HTMLDivElement>) => {
+    if (event.pointerType !== 'mouse') return;
+    pointer.current = { x: event.clientX, y: event.clientY, buttons: event.buttons };
+    updatePointer(pointer.current);
   };
   useEffect(() => {
     const element = video.current!;
+    const publish = () => {
+      if (audienceId) window.demo.publishPresentationState({
+        id: audienceId, ...c.result, position: element.currentTime, error: c.error.slice(0, 4096)
+      });
+    };
     const c = new PlaybackController(element, projects, () => {
       if (!['loading', 'seeking'].includes(c.state)) setCover('');
       render(value => value + 1);
+      publish();
     }, project => {
       if (element.readyState >= 2) {
         const canvas = document.createElement('canvas');
@@ -74,14 +92,17 @@ export function Player({ projects, exit }: { projects: Video[]; exit: () => void
         canvas.getContext('2d')!.drawImage(element, 0, 0);
         setCover(canvas.toDataURL());
       }
-      element.src = mediaUrl(project.media); element.load();
-    });
+      element.src = mediaUrl(project.media, audienceId); element.load();
+    }, audienceId ? () => focused.current : undefined);
     controller.current = c;
+    const finish = () => exit(c.result);
     const key = (event: KeyboardEvent) => {
       if (event.repeat) return;
-      if (event.code === 'Escape') { event.preventDefault(); exit(); return; }
+      if (event.code === 'Escape') { event.preventDefault(); finish(); return; }
       if (event.code === 'Space' && event.ctrlKey) {
-        event.preventDefault(); showPanel(visiblePanel.current?.kind === 'timeline' ? null : 'timeline'); return;
+        event.preventDefault();
+        if (!audienceId) showPanel(visiblePanel.current?.kind === 'timeline' ? null : 'timeline');
+        return;
       }
       if (event.code === 'Space' && visiblePanel.current && !(event.target instanceof HTMLElement && event.target.closest('.error-panel'))) {
         event.preventDefault(); showPanel(null); c.resume(); return;
@@ -94,20 +115,35 @@ export function Player({ projects, exit }: { projects: Video[]; exit: () => void
       }
     };
     const blur = () => {
+      focused.current = false;
       clearHover();
       if (visiblePanel.current?.hover) showPanel(null);
       c.blur();
     };
-    const focus = () => c.refocus();
-    window.addEventListener('keydown', key); window.addEventListener('blur', blur); window.addEventListener('focus', focus);
-    const unsubscribe = window.demo.onFullscreen(enabled => { if (!enabled) exit(); });
-    const unsubscribeFocus = window.demo.onFocus(focused => { if (focused) c.refocus(); else blur(); });
+    const focus = () => {
+      focused.current = true;
+      c.refocus();
+      if (pointer.current) updatePointer(pointer.current);
+    };
+    window.addEventListener('keydown', key);
+    if (!audienceId) { window.addEventListener('blur', blur); window.addEventListener('focus', focus); }
+    const unsubscribe = window.demo.onFullscreen(enabled => { if (!enabled) finish(); });
+    const unsubscribeFocus = window.demo.onFocus(focused => { if (focused) focus(); else blur(); });
+    const unsubscribeCommand = audienceId ? window.demo.onPresentationCommand(command => {
+      if (command.kind === 'input') void c.input(command.input);
+      else if (command.kind === 'seek') c.seek(command.time);
+      else if (command.kind === 'previous-cue') c.previousCue();
+      else finish();
+    }) : () => {};
+    if (audienceId) element.addEventListener('timeupdate', publish);
+    if (!focused.current) c.blur();
     c.start();
     return () => {
-      clearHover(); c.dispose(); controller.current = null; unsubscribe(); unsubscribeFocus();
+      clearHover(); c.dispose(); controller.current = null; unsubscribe(); unsubscribeFocus(); unsubscribeCommand();
+      element.removeEventListener('timeupdate', publish);
       window.removeEventListener('keydown', key); window.removeEventListener('blur', blur); window.removeEventListener('focus', focus);
     };
-  }, [projects, exit, restart, showPanel, clearHover]);
+  }, [projects, exit, restart, showPanel, clearHover, updatePointer, audienceId]);
   const current = controller.current;
   const project = projects[current?.index ?? 0];
   const position = current?.video.currentTime ?? 0;
@@ -118,13 +154,15 @@ export function Player({ projects, exit }: { projects: Video[]; exit: () => void
   const notesOpen = panel?.kind === 'notes';
   const unavailable = !current || ['loading', 'error'].includes(current.state);
   const playLabel = current?.state === 'item-ended' ? 'Next video' : 'Play';
-  return <div className="stage" data-testid="stage" data-state={current?.state ?? 'loading'} data-index={current?.index ?? 0} data-overshoot={current?.lastOvershoot ?? 0}
-    data-controls-open={controlsOpen} data-notes-open={notesOpen} onPointerMove={movePointer} onPointerUp={movePointer} onPointerDown={clearHover} onPointerLeave={leaveStage}>
+  return <div ref={stage} className="stage" data-testid="stage" data-state={current?.state ?? 'loading'} data-index={current?.index ?? 0} data-overshoot={current?.lastOvershoot ?? 0}
+    data-controls-open={controlsOpen} data-notes-open={notesOpen} onPointerEnter={audienceId ? undefined : movePointer}
+    onPointerMove={audienceId ? undefined : movePointer} onPointerUp={audienceId ? undefined : movePointer}
+    onPointerDown={audienceId ? undefined : event => { clearHover(); movePointer(event); }} onPointerLeave={audienceId ? undefined : leaveStage}>
     <video ref={video} crossOrigin="anonymous" onClick={event => {
       if (event.button === 0) { showPanel(null); void controller.current?.input('click'); }
     }} muted disablePictureInPicture />
     {cover && <img className="cover" src={cover} alt="" />}
-    <section ref={controlsPanel} className={`playback-controls${controlsOpen ? ' open' : ''}`} aria-label="Playback controls" aria-hidden={!controlsOpen} inert={!controlsOpen}>
+    {!audienceId && <section ref={controlsPanel} className={`playback-controls${controlsOpen ? ' open' : ''}`} aria-label="Playback controls" aria-hidden={!controlsOpen} inert={!controlsOpen}>
       <div className="playback-seekbar">
         <div className="timeline-rail" /><div className="timeline-fill" style={{ width: `${progress}%` }} />
         <input ref={positionSlider} aria-label="Playback position" type="range" min={0} max={project.duration} step=".001" value={position}
@@ -147,8 +185,8 @@ export function Player({ projects, exit }: { projects: Video[]; exit: () => void
         <output aria-label="Playback time">{formatTime(position)} / {formatTime(project.duration)}</output>
         <small>Ctrl+Space: toggle / Space: play</small>
       </div>
-    </section>
-    <aside ref={notesPanel} className={`playback-notes${notesOpen ? ' open' : ''}`} style={{ width: notesWidth }}
+    </section>}
+    {!audienceId && <aside ref={notesPanel} className={`playback-notes${notesOpen ? ' open' : ''}`} style={{ width: notesWidth }}
       aria-label="Presenter notes" aria-hidden={!notesOpen} inert={!notesOpen}>
       <div className="panel-heading"><h2>Presenter notes</h2><button aria-label="Close presenter notes" onClick={() => showPanel(null)}>Close</button></div>
       <p className="notes-context">{notesCue ? `${project.cues.indexOf(notesCue) + 1}. ${notesCue.name}` : 'Video default'}</p>
@@ -158,10 +196,10 @@ export function Player({ projects, exit }: { projects: Video[]; exit: () => void
           {current?.state === 'item-ended' ? 'Next video' : 'Play'}</button>
         <small>Space: resume</small>
       </div>
-    </aside>
-    {controller.current?.state === 'error' && <div className="error-panel" role="alert">
+    </aside>}
+    {!audienceId && controller.current?.state === 'error' && <div className="error-panel" role="alert">
       <h2>Playback stopped</h2><p>{controller.current.error}</p>
-      <button onClick={() => setRestart(value => value + 1)}>Restart</button> <button onClick={exit}>Return to editor</button>
+      <button onClick={() => setRestart(value => value + 1)}>Restart</button> <button onClick={() => exit(current!.result)}>Return to editor</button>
     </div>}
   </div>;
 }

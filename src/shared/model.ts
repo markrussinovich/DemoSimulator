@@ -60,6 +60,25 @@ export type Project = z.infer<typeof projectSchema>;
 export type Catalog = z.infer<typeof catalogSchema>;
 export type Workspace = { path: string; catalog: Catalog; recovery?: string; filePath?: string; projectId?: string };
 export type ImportedMedia = { media: string; url: string; name: string };
+export const playbackResultSchema = z.object({
+  index: z.number().int().min(0).max(9999),
+  state: z.enum(['loading', 'seeking', 'ready', 'playing', 'manually-paused', 'cue-paused', 'focus-paused', 'item-ended', 'playlist-ended', 'error'])
+}).strict();
+export type PlaybackResult = z.infer<typeof playbackResultSchema>;
+export const presentationStateSchema = playbackResultSchema.extend({
+  id: z.string().uuid(), position: z.number().finite().nonnegative(), error: z.string().max(4096)
+});
+export type PresentationState = z.infer<typeof presentationStateSchema>;
+export const presentationCommandSchema = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('input'), input: z.enum(['space', 'enter', 'click']) }).strict(),
+  z.object({ kind: z.literal('seek'), time: z.number().finite() }).strict(),
+  z.object({ kind: z.literal('previous-cue') }).strict(),
+  z.object({ kind: z.literal('stop') }).strict()
+]);
+export type PresentationCommand = z.infer<typeof presentationCommandSchema>;
+export type PresentationDisplay = { id: number; label: string; width: number; height: number };
+export type PresentationSession = { id: string; displayId: number; videos: Video[]; focused: boolean };
+export type PresentationStopped = { id: string; result?: PlaybackResult; reason?: string };
 export interface DemoAPI {
   newProject(): Promise<Workspace>;
   openProject(): Promise<Workspace | null>;
@@ -73,5 +92,17 @@ export interface DemoAPI {
   onProgress(listener: (message: string) => void): () => void;
   onFullscreen(listener: (enabled: boolean) => void): () => void;
   onFocus(listener: (focused: boolean) => void): () => void;
+  presentationDisplays(): Promise<PresentationDisplay[]>;
+  onPresentationDisplays(listener: (displays: PresentationDisplay[]) => void): () => void;
+  startPresentation(displayId: number, videos: Video[]): Promise<PresentationSession>;
+  currentPresentation(): Promise<PresentationSession | null>;
+  presentationState(id: string): Promise<PresentationState | null>;
+  presentationCommand(id: string, command: PresentationCommand): Promise<void>;
+  publishPresentationState(state: PresentationState): void;
+  onPresentationState(listener: (state: PresentationState) => void): () => void;
+  onPresentationCommand(listener: (command: PresentationCommand) => void): () => void;
+  stopPresentation(id: string): Promise<void>;
+  finishPresentation(id: string, result: PlaybackResult): Promise<void>;
+  onPresentationStopped(listener: (event: PresentationStopped) => void): () => void;
 }
-export const mediaUrl = (media: string) => `demo-media://asset/${media}`;
+export const mediaUrl = (media: string, presentationId?: string) => `demo-media://asset/${media}${presentationId ? `?presentation=${presentationId}` : ''}`;

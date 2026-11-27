@@ -85,6 +85,24 @@ label > span { font-size: 12px; }
 .save-status { margin-left: auto; color: var(--cp-text-muted); font-size: 12px; min-width: 60px; max-width: 280px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .save-status.unsaved { color: var(--cp-accent); }
 .fullscreen-option { display: flex; align-items: center; gap: 8px; white-space: nowrap; flex: none; }
+.presentation-output { display: flex; align-items: center; gap: 12px; padding: 0 20px 10px; font-size: 12px; flex: none; }
+.presentation-output select { margin-left: 8px; padding: 4px 8px; max-width: 260px; }
+.presentation-output > span { color: var(--cp-text-muted); }
+.presenter-session { display: grid; grid-template-columns: 160px minmax(0, 1fr) minmax(180px, 260px); gap: 12px; padding: 12px 20px; border-bottom: 1px solid var(--cp-border); background: var(--cp-surface-soft); flex: none; }
+.audience-preview { width: 160px; height: 100px; object-fit: contain; background: var(--cp-media-bg); border-radius: 6px; }
+.presenter-transport { min-width: 0; }
+.presentation-video { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 12px; }
+.presentation-status { display: block; margin-top: 4px; font-size: 13px; }
+.presentation-status[data-state="cue-paused"] { border-left: 3px solid var(--cp-warning); padding-left: 6px; }
+.presentation-status[data-state="item-ended"], .presentation-status[data-state="playlist-ended"] { color: var(--cp-accent); }
+.presenter-transport > input { width: 100%; height: 24px; padding: 0; accent-color: var(--cp-accent); }
+.presenter-transport button { font-size: 11px; padding: 3px 6px; }
+.presenter-transport output { font-size: 11px; white-space: nowrap; }
+.presentation-notes { display: flex; flex-direction: column; gap: 6px; min-width: 0; max-height: 150px; font-size: 12px; }
+.presentation-notes > div { min-height: 20px; flex: 1; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
+.presentation-notes select { width: 100%; padding: 3px 6px; font-size: 12px; }
+.app-shell:has(.presenter-session) .editor-panel { overflow-y: auto; }
+.app-shell:has(.presenter-session) .preview-layout { flex: none; height: clamp(140px, 25vh, 220px); }
 input[type="checkbox"] { accent-color: var(--cp-accent); width: 20px; height: 20px; margin: 0; flex: none; }
 .editor-layout { flex: 1; min-height: 0; display: grid; grid-template-columns: 244px minmax(0, 1fr); gap: 16px; padding: 0 20px 12px; }
 .videos-panel, .editor-panel { background: var(--cp-surface); border: 1px solid var(--cp-border); border-radius: 16px; padding: 16px; min-height: 0; min-width: 0; display: flex; flex-direction: column; }
@@ -125,12 +143,13 @@ input[type="checkbox"] { accent-color: var(--cp-accent); width: 20px; height: 20
 .timeline-help, .timeline-labels { display: flex; justify-content: space-between; gap: 8px; font-size: 11px; color: var(--cp-text-muted); user-select: none; }
 .timeline-track { position: relative; height: 44px; cursor: default; touch-action: none; user-select: none; }
 .timeline-rail, .timeline-fill { position: absolute; height: 8px; border-radius: 4px; top: 26px; left: 0; pointer-events: none; }
-.timeline-rail { width: 100%; background: var(--cp-border); }
+.timeline-rail { width: 100%; background: var(--cp-border-strong); }
 .timeline-fill { background: var(--cp-accent); }
 .playhead { position: absolute; top: 23px; height: 14px; width: 4px; transform: translateX(-50%); background: var(--cp-accent); cursor: default; }
-.pause-marker { position: absolute; top: 0; height: 24px; width: 24px; padding: 0; transform: translateX(-50%); border-radius: 6px 6px 2px 2px; border: 1px solid var(--cp-marker); background: var(--cp-marker); color: var(--cp-marker-fg); font-size: 11px; cursor: ew-resize; touch-action: none; z-index: 1; }
-.pause-marker:hover:not(:disabled) { background: var(--cp-marker-selected); }
-.pause-marker::after { content: ""; position: absolute; left: calc(50% - 1px); top: 23px; width: 2px; height: 12px; background: var(--cp-marker); pointer-events: none; }
+.pause-marker, .playback-cue { position: absolute; top: 0; height: 24px; width: 24px; padding: 0; transform: translateX(-50%); border-radius: 6px 6px 2px 2px; border: 1px solid var(--cp-marker); background: var(--cp-marker); color: var(--cp-marker-fg); font-size: 11px; z-index: 1; }
+.pause-marker { cursor: ew-resize; touch-action: none; }
+.pause-marker:hover:not(:disabled), .playback-cue:hover:not(:disabled) { background: var(--cp-marker-selected); }
+.pause-marker::after, .playback-cue::after { content: ""; position: absolute; left: calc(50% - 1px); top: 23px; width: 2px; height: 12px; background: var(--cp-marker); pointer-events: none; }
 .pause-marker.selected { background: var(--cp-marker-selected); border-color: var(--cp-marker-selected); outline: 2px solid var(--cp-accent); outline-offset: 2px; z-index: 2; }
 .pause-marker.selected::after { background: var(--cp-marker-selected); }
 .pause-marker.removing { opacity: .5; background: var(--cp-danger); color: var(--cp-accent-fg); }
@@ -167,12 +186,10 @@ footer { display: flex; justify-content: space-between; gap: 16px; padding: 0 20
 .playback-controls { position: absolute; bottom: 0; left: 0; right: 0; padding: 8px 20px 12px; background: var(--cp-surface); border-top: 1px solid var(--cp-border); transform: translateY(100%); transition: transform 160ms ease; pointer-events: none; }
 .playback-controls.open { transform: translateY(0); pointer-events: auto; cursor: default; }
 .playback-seekbar { position: relative; height: 40px; margin: 0 12px; padding-top: 16px; }
-.playback-seekbar .timeline-rail, .playback-seekbar .timeline-fill { top: 25px; height: 6px; border-radius: 3px; }
-.playback-seekbar input { position: relative; appearance: none; display: block; width: 100%; height: 24px; margin: 0; padding: 0; border: 0; background: transparent; cursor: default; }
-.playback-seekbar input::-webkit-slider-runnable-track { height: 6px; border-radius: 3px; background: transparent; }
-.playback-seekbar input::-webkit-slider-thumb { appearance: none; width: 4px; height: 16px; margin-top: -5px; background: var(--cp-accent); }
-.playback-cue { position: absolute; top: 0; width: 20px; height: 20px; padding: 0; transform: translateX(-50%); background: var(--cp-marker); color: var(--cp-marker-fg); border: 1px solid var(--cp-marker); border-radius: 4px; font-size: 11px; }
-.playback-cue::after { content: ""; position: absolute; top: 19px; left: calc(50% - 1px); width: 2px; height: 10px; background: var(--cp-marker); pointer-events: none; }
+.playback-seekbar input { position: relative; top: 2px; appearance: none; display: block; width: 100%; height: 24px; margin: 0; padding: 0; border: 0; background: transparent; cursor: default; }
+.playback-seekbar input::-webkit-slider-runnable-track { height: 8px; border-radius: 4px; background: transparent; }
+.playback-seekbar input::-webkit-slider-thumb { appearance: none; width: 4px; height: 14px; margin-top: -3px; background: var(--cp-accent); }
+.playback-cue { cursor: default; }
 .playback-actions { display: flex; align-items: center; gap: 8px; }
 .playback-actions > button { display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px; padding: 6px; flex: none; }
 .playback-actions output { flex: 1; text-align: center; color: var(--cp-text-muted); font: 12px Consolas, "Courier New", Courier, monospace; }
@@ -188,6 +205,9 @@ footer { display: flex; justify-content: space-between; gap: 16px; padding: 0 20
 .empty { flex: 1; display: flex; align-items: center; justify-content: center; flex-direction: column; padding: 24px; text-align: center; color: var(--cp-text-muted); }
 code { font-family: Consolas, "Courier New", Courier, monospace; }
 @media (max-width: 1100px) {
+  .presenter-session { grid-template-columns: 120px minmax(0, 1fr) 180px; padding: 8px 12px; gap: 8px; }
+  .audience-preview { width: 120px; height: 90px; }
+  .presentation-output { padding-left: 12px; padding-right: 12px; }
   .brand > span { display: none; }
   .editor-layout { grid-template-columns: 212px minmax(0, 1fr); gap: 12px; padding-left: 12px; padding-right: 12px; }
   .app-header, .project-bar { padding-left: 12px; padding-right: 12px; }

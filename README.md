@@ -94,19 +94,28 @@ The preview scales to the available window instead of pushing controls below it.
 | --- | --- |
 | Space | Start/resume, or pause actively playing video |
 | Ctrl+Space | Pause and slide open the bottom playback controls; press again to close without resuming |
-| Hold mouse at bottom edge for 1 second | Pause and slide open the timeline |
-| Hold mouse at right edge for 1 second | Pause and slide open the matching presenter notes |
+| Hold mouse at bottom edge for 0.5 seconds | Pause and slide open the timeline |
+| Hold mouse at right edge for 0.5 seconds | Pause and slide open the matching presenter notes |
 | Enter or primary click on video | Start the opening frame or resume a pause; does not advance a finished video |
-| Space at a non-final video's end | Load the next video's opening frame, paused |
-| Space again | Start the next video |
+| Space at a non-final video's end | Start the next video |
 | Switch away | Pause; returning does not resume or advance |
 | Escape | Return to editor and stop audio |
 
-The playback controls show pause markers and a draggable position slider, with **Start of video**, **Previous pause**, and **Play** buttons. Click a numbered pause to seek there. **Play** or **Space** resumes and slides the controls away. Seeking backward rearms later pauses; seeking to a pause resumes past that pause. At a non-final video's end, **Next video** loads the next opening frame paused.
+The playback controls show pause markers and a draggable position slider, with **Start of video**, **Previous pause**, and **Play** buttons. Click a numbered pause to seek there. **Play** or **Space** resumes and slides the controls away. Seeking backward rearms later pauses; seeking to a pause resumes past that pause. At a non-final video's end, **Next video** or one press of **Space** starts the next video. The completed video holds its actual final frame until then.
 
 Hover-opened panels stay open while the pointer is inside and slide away when it leaves, without resuming playback. Ctrl+Space-opened controls stay open until dismissed or playback resumes. The read-only presentation notes show the latest reached pause's notes (including inherited defaults) and use the editor's remembered width. **Play** or **Space** hides either panel and resumes. Notes opened this way are visible on the presentation screen.
 
 During presentation, the real OS cursor stays hidden over the video, including while paused. It appears only over an open timeline or notes panel and error-recovery buttons; the editor keeps its normal cursors. Video playback is always muted in both the editor and player; original audio tracks remain intact in the project files. The final video holds its last frame; it never loops automatically. Use the playback controls to return to its start, or exit and play again.
+
+### Private presenter screen and audience monitor
+
+Use Windows **Extend** display mode (Win+P), not Duplicate. Keep the editor on your presenter screen, choose another monitor under **Presentation display**, then select **Play project** or **Play this video**.
+
+The audience monitor shows only fullscreen video, with no controls, notes, or status messages. Your main window keeps the full editor plus a private live audience preview, playback controls, current notes, and clear pause-point/end-of-video status. The audience window owns playback and authored pauses; the private preview follows it.
+
+Edit names, notes, pause points, and video order while presenting. These edits apply only to the next presentation; the current presentation keeps its original snapshot, even if you open a different project. Editor preview controls remain separate from audience playback. Use the private presentation controls, or Space/Enter when not typing or focused on an editor control, to control the audience. Moving focus between the two windows does not pause; switching to ZoomIt or another application pauses without automatically resuming.
+
+**Stop presenting** or Escape closes the audience window. When returning to the same project, the editor selects the current video after a mid-video stop, or the next video after an end; it stays on the final video if there is no next one. This selection behavior also applies to single-screen presentation. Reordered videos are matched by identity; a removed video or a different open project is not selected. Disconnecting the audience monitor or moving the editor onto it stops presentation.
 
 ## Delete a project
 
@@ -166,7 +175,7 @@ Remove-Item Env:\DEMOSIM_EXECUTABLE
 
 Unit tests need no sample recordings. Electron workflow tests use two local MP4s in `Samples\` and a locally generated WebM with audio. The recordings are deliberately excluded from Git: provide two MP4 recordings before running `test:e2e` or `test:packaged`. The current sample workflow expects its first alphabetically sorted recording to have a duration of approximately 101.133 seconds; adjust that fixture metadata in `tests\e2e\demo.spec.ts` when substituting recordings.
 
-Workflows cover document lifecycle and cancellation, old-format migration, drag/reorder, marker move/delete/cancel, keyboard alternatives, responsive layout, frame reference comparisons, silent playback, preview cue stops, focus handling and two-step playback.
+Workflows cover document lifecycle and cancellation, old-format migration, drag/reorder, marker move/delete/cancel, keyboard alternatives, responsive layout, frame reference comparisons, silent playback, preview cue stops, focus handling and one-step next-video playback.
 
 For native window startup measurements:
 

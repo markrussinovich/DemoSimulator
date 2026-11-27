@@ -281,7 +281,7 @@ test('videos reorder by drag and by buttons, and the order survives Open', async
   await expect(rows.first().locator('strong')).toHaveText(names[0]);
   await page.getByRole('button', { name: 'Save', exact: true }).click(); await saved();
 });
-test('project playback preserves cues, native focus pauses, final frames and two-step next-video flow', async () => {
+test('project playback preserves cues, native focus pauses, final frames and one-step next-video flow', async () => {
   await page.getByLabel('Fullscreen presentation').check();
   await page.getByRole('button', { name: 'Play project', exact: true }).click();
   const stage = page.getByTestId('stage');
@@ -305,9 +305,8 @@ test('project playback preserves cues, native focus pauses, final frames and two
   await page.keyboard.press('Enter'); await expect(stage).toHaveAttribute('data-state', 'item-ended');
   expect(await frameSignature('.stage video')).toBe(finalFrame);
   await page.keyboard.press('Space');
-  await expect(stage).toHaveAttribute('data-state', 'ready'); await expect(stage).toHaveAttribute('data-index', '1');
-  expect(await page.locator('.stage video').evaluate((video: HTMLVideoElement) => video.paused && video.currentTime < .01)).toBe(true);
-  await page.keyboard.press('Space'); await expect(stage).toHaveAttribute('data-state', 'cue-paused');
+  await expect(stage).toHaveAttribute('data-index', '1');
+  await expect(stage).toHaveAttribute('data-state', 'cue-paused');
   expect(await frameSignature('.stage video')).toBe(referenceFrames[1]);
   await page.keyboard.press('Enter');
   await page.locator('.stage video').evaluate((video: HTMLVideoElement) => { video.currentTime = video.duration - .2; });

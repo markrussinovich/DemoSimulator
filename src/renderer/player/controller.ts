@@ -1,5 +1,13 @@
-import type { Video } from '../../shared/model';
-export type State = 'loading' | 'seeking' | 'ready' | 'playing' | 'manually-paused' | 'cue-paused' | 'focus-paused' | 'item-ended' | 'playlist-ended' | 'error';
+import type { PlaybackResult, Video } from '../../shared/model';
+export type State = PlaybackResult['state'];
+export function selectionAfterPlayback(original: string[], current: string[], index: number, ended: boolean): number | null {
+  const next = Math.min(index + (ended ? 1 : 0), original.length - 1);
+  const id = original[next];
+  if (!id) return null;
+  if (original.length === current.length && original.every((id, index) => id === current[index])) return next;
+  const selected = current.indexOf(id);
+  return selected >= 0 ? selected : null;
+}
 export type Input = 'space' | 'enter' | 'click';
 export function inputAction(state: State, input: Input): 'play' | 'pause' | 'next' | 'none' {
   if (state === 'playing') return input === 'space' ? 'pause' : 'none';
@@ -25,6 +33,7 @@ export class PlaybackController {
   private focused = true;
   private discovering = false;
   private resumeAfterSeek = false;
+  private playAfterLoad = false;
   private removers: (() => void)[] = [];
   constructor(
     readonly video: HTMLVideoElement,
@@ -45,7 +54,10 @@ export class PlaybackController {
       if (this.discovering && !Number.isFinite(video.duration)) return;
       if (!Number.isFinite(video.duration) || video.duration <= 0) { this.fail('Video duration is unavailable. Re-encode as MP4 (H.264/AAC) or seekable WebM.'); return; }
       if (Math.abs(video.duration - this.projects[this.index].duration) > .5) { this.fail('Media changed since this project was saved. Reimport the recording.'); return; }
+      const play = this.playAfterLoad;
+      this.playAfterLoad = false;
       this.hold(0, 'ready');
+      if (play) this.resume();
     };
     listen('loadeddata', loaded); listen('durationchange', loaded);
     listen('seeked', () => {
@@ -53,12 +65,7 @@ export class PlaybackController {
       if (this.state !== 'seeking') return;
       this.settleHold();
     });
-    listen('ended', () => {
-      if (this.state !== 'playing') return;
-      this.stopClock(); this.clearTimeout();
-      this.state = this.index + 1 < projects.length ? 'item-ended' : 'playlist-ended';
-      this.notify();
-    });
+    listen('ended', () => this.finishEndedItem());
     listen('error', () => this.fail('Video could not be decoded. Check the media file and use MP4 (H.264/AAC) or WebM.'));
     listen('waiting', () => {
       this.buffering = true;
@@ -78,7 +85,8 @@ export class PlaybackController {
     if (!this.projects.length) { this.fail('This playlist is empty.'); return; }
     this.loadItem();
   }
-  private loadItem() {
+  private loadItem(play = false) {
+    this.playAfterLoad = play;
     this.generation++; this.video.pause(); this.stopClock();
     this.state = 'loading'; this.cue = 0; this.error = ''; this.buffering = false; this.discovering = false;
     this.armTimeout('Video loading stalled. Check that the media is available.');
@@ -86,8 +94,12 @@ export class PlaybackController {
   }
   async input(input: Input) {
     if (this.disposed) return;
+    this.finishEndedItem();
     const action = inputAction(this.state, input);
-    if (action === 'next') { this.index++; this.loadItem(); return; }
+    if (action === 'next') {
+      if (!this.focused || !this.focus()) return;
+      this.index++; this.loadItem(true); return;
+    }
     if (action === 'pause') { this.pause('manually-paused'); return; }
     if (action !== 'play' || !this.focused || !this.focus()) return;
     const token = ++this.generation;
@@ -106,10 +118,15 @@ export class PlaybackController {
   }
   blur() {
     this.focused = false;
+    this.playAfterLoad = false;
     this.resumeAfterSeek = false;
     if (this.state === 'playing') this.pause('focus-paused');
   }
   refocus() { this.focused = true; }
+  get result(): PlaybackResult {
+    this.finishEndedItem();
+    return { index: this.index, state: this.state };
+  }
   pause(state: State) {
     this.resumeAfterSeek = false;
     this.generation++; this.video.pause(); this.stopClock(); this.clearTimeout();
@@ -149,8 +166,15 @@ export class PlaybackController {
     this.notify();
     if (this.resumeAfterSeek) { this.resumeAfterSeek = false; void this.input('space'); }
   }
+  private finishEndedItem() {
+    if (!this.video.ended || ['loading', 'seeking', 'error', 'item-ended', 'playlist-ended'].includes(this.state)) return;
+    this.generation++; this.stopClock(); this.clearTimeout(); this.resumeAfterSeek = false;
+    this.state = this.index + 1 < this.projects.length ? 'item-ended' : 'playlist-ended';
+    this.notify();
+  }
   private checkCue(time: number) {
     if (this.state !== 'playing') return;
+    if (this.video.ended) { this.finishEndedItem(); return; }
     const cues = [...this.projects[this.index].cues].sort((a, b) => a.time - b.time);
     const point = cues[this.cue];
     if (point && time >= point.time) {

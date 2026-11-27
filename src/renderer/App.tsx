@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState, type PointerEvent } from 'react';
-import { mediaUrl, type Catalog, type Video, type Workspace } from '../shared/model';
+import { mediaUrl, type Catalog, type PlaybackResult, type PresentationDisplay, type PresentationSession, type Video, type Workspace } from '../shared/model';
 import { Player } from './player/Player';
+import { Presenter } from './player/Presenter';
+import { selectionAfterPlayback } from './player/controller';
 import { Timeline, formatTime } from './editor/Timeline';
 
 async function probe(url: string): Promise<{ duration: number; width: number; height: number }> {
@@ -39,8 +41,14 @@ export function App() {
   const [error, setError] = useState('');
   const [progress, setProgress] = useState('');
   const [busy, setBusy] = useState(true);
+  const [showProgress, setShowProgress] = useState(true);
   const [session, setSession] = useState<Video[] | null>(null);
   const [fullscreen, setFullscreen] = useState(true);
+  const [displays, setDisplays] = useState<PresentationDisplay[]>([]);
+  const [displayId, setDisplayId] = useState<number | null>(null);
+  const [presentation, setPresentation] = useState<PresentationSession | null>(null);
+  const presentationRef = useRef<PresentationSession | null>(null);
+  const playbackOrigin = useRef<{ projectId: string; videos: string[]; start: number } | null>(null);
   const [time, setTime] = useState(0);
   const [previewPlaying, setPreviewPlaying] = useState(false);
   const [help, setHelp] = useState(false);
@@ -63,6 +71,8 @@ export function App() {
   const operation = useRef(false);
   const draggedVideo = useRef<number | null>(null);
   const project = catalog.projects.find(project => project.id === projectId);
+  const liveProject = useRef(project);
+  liveProject.current = project;
   const videoId = project?.videos[selectedIndex] ?? '';
   const video = catalog.videos.find(video => video.id === videoId);
   previewCues.current = video?.cues ?? [];
@@ -93,8 +103,36 @@ export function App() {
   };
   useEffect(() => {
     window.demo.currentProject().then(value => { if (value) install(value); }).catch(error => setError(String(error))).finally(() => setBusy(false));
-    return window.demo.onProgress(setProgress);
+    return window.demo.onProgress(message => {
+      setProgress(message);
+      if (message) setShowProgress(true);
+    });
   }, []);
+  useEffect(() => {
+    const update = (values: PresentationDisplay[]) => {
+      setDisplays(values);
+      setDisplayId(id => id !== null && !values.some(display => display.id === id) ? null : id);
+    };
+    const unsubscribe = window.demo.onPresentationDisplays(update);
+    void window.demo.presentationDisplays().then(update).catch(error => setError(String(error)));
+    return unsubscribe;
+  }, []);
+  const finishSelection = useCallback((result?: PlaybackResult) => {
+    const origin = playbackOrigin.current, project = liveProject.current;
+    if (!origin || !project || !result || project.id !== origin.projectId) return;
+    const selected = selectionAfterPlayback(origin.videos, project.videos, origin.start + result.index,
+      result.state === 'item-ended' || result.state === 'playlist-ended');
+    if (selected === null) return;
+    preview.current?.pause();
+    if (preview.current?.readyState) preview.current.currentTime = 0;
+    setSelectedIndex(selected); setCueId(''); setTime(0); setPreviewPlaying(false);
+  }, []);
+  useEffect(() => window.demo.onPresentationStopped(event => {
+    if (presentationRef.current?.id !== event.id) return;
+    finishSelection(event.result);
+    presentationRef.current = null; setPresentation(null);
+    if (event.reason) setError(event.reason);
+  }), [finishSelection]);
   useEffect(() => {
     const handler = (event: BeforeUnloadEvent) => {
       if (dirty || busy) { event.preventDefault(); event.returnValue = ''; }
@@ -124,11 +162,11 @@ export function App() {
     callback = element.requestVideoFrameCallback(frame);
     return () => element.cancelVideoFrameCallback(callback);
   }, [videoId, session]);
-  const run = async (fn: () => Promise<void>) => {
+  const run = async (fn: () => Promise<void>, showProgress = true) => {
     if (operation.current) return;
-    operation.current = true; setBusy(true); setError(''); preview.current?.pause();
+    operation.current = true; setBusy(true); setShowProgress(showProgress); setError(''); preview.current?.pause();
     try { await fn(); } catch (error) { setError(String(error)); }
-    finally { setBusy(false); operation.current = false; }
+    finally { setBusy(false); setShowProgress(false); operation.current = false; }
   };
   const save = async (saveAs = false) => {
     if (!project) return false;
@@ -208,12 +246,23 @@ export function App() {
     if (!discard()) return;
     const value = legacy ? await window.demo.openLegacyWorkspace() : await window.demo.openProject();
     if (value) install(value);
-  });
-  const exit = useCallback(() => { setSession(null); setPreviewPlaying(false); void window.demo.fullscreen(false); }, []);
-  const play = (items: Video[]) => run(async () => {
-    if (!items.length) return;
+  }, false);
+  const exit = useCallback((result: PlaybackResult) => {
+    finishSelection(result); setSession(null); setPreviewPlaying(false); void window.demo.fullscreen(false);
+  }, [finishSelection]);
+  const play = (items: Video[], start: number) => run(async () => {
+    if (!items.length || presentationRef.current || !project) return;
+    playbackOrigin.current = { projectId: project.id, videos: [...project.videos], start };
     // Present the current edit snapshot; saving is a separate, explicit action.
-    await window.demo.fullscreen(fullscreen); setSession(structuredClone(items));
+    if (displayId === null) {
+      await window.demo.fullscreen(fullscreen); setSession(structuredClone(items));
+    } else {
+      const value = await window.demo.startPresentation(displayId, structuredClone(items).map(video => ({
+        ...video, name: video.name.trim() || 'Untitled video',
+        cues: video.cues.map(cue => ({ ...cue, name: cue.name.trim() || 'Pause point' }))
+      })));
+      presentationRef.current = value; setPresentation(value);
+    }
   });
   useEffect(() => {
     const key = (event: globalThis.KeyboardEvent) => {
@@ -243,18 +292,23 @@ export function App() {
         <button aria-label="Help" aria-expanded={help} onClick={() => setHelp(!help)}>?</button>
       </nav>
     </header>
-    {(error || busy || progress) && <div className="notifications">
+    {presentation && <Presenter session={presentation} onError={setError} />}
+    {(error || (busy && showProgress) || progress) && <div className="notifications">
       {error && <div className="notice error" role="alert"><span>{error}</span><button onClick={() => setError('')}>Dismiss</button></div>}
-      {(busy || progress) && <div className="notice" role="status"><span>{progress || 'Loading...'}</span><button onClick={() => void window.demo.cancelOperation()}>Cancel</button></div>}
+      {((busy && showProgress) || progress) && <div className="notice" role="status"><span>{progress || 'Loading...'}</span><button onClick={() => void window.demo.cancelOperation()}>Cancel</button></div>}
     </div>}
     {project ? <>
       <div className="project-bar">
         <label className="project-title"><span>Project</span><input aria-label="Project name" value={project.name} disabled={busy} maxLength={200}
           onChange={event => setCatalog(current => ({ ...current, projects: current.projects.map(p => p.id === projectId ? { ...p, name: event.target.value } : p) }))} /></label>
-        <button className="primary" disabled={busy || !ordered.length} onClick={() => void play(ordered)}>Play project</button>
-        <label className="fullscreen-option">Fullscreen<input aria-label="Fullscreen presentation" type="checkbox" checked={fullscreen} disabled={busy} onChange={event => setFullscreen(event.target.checked)} /></label>
+        <button className="primary" disabled={busy || !ordered.length || !!presentation} onClick={() => void play(ordered, 0)}>Play project</button>
+        <label className="fullscreen-option">Fullscreen<input aria-label="Fullscreen presentation" type="checkbox" checked={displayId !== null || fullscreen} disabled={busy || displayId !== null} onChange={event => setFullscreen(event.target.checked)} /></label>
         <span className={`save-status${dirty ? ' unsaved' : ''}`} title={document?.filePath ?? 'Choose a project file with Save'}>{dirty ? 'Unsaved changes' : 'Saved'}{document?.filePath ? ` - ${document.filePath.split(/[\\/]/).pop()}` : ' - choose a file with Save'}</span>
       </div>
+      <div className="presentation-output"><label>Presentation display <select aria-label="Presentation display" value={displayId ?? ''} disabled={busy || !!presentation}
+        onChange={event => setDisplayId(event.target.value === '' ? null : Number(event.target.value))}>
+        <option value="">This window</option>{displays.map(display => <option key={display.id} value={display.id}>{display.label} ({display.width} x {display.height})</option>)}
+      </select></label><span>{displayId === null ? 'Choose another monitor for private presenter controls.' : 'Audience: fullscreen video only. Your editor stays here.'}</span></div>
       {catalog.projects.length > 1 && <div className="legacy-projects"><label>Recovered project <select aria-label="Recovered project" value={projectId} disabled={busy} onChange={event => {
         preview.current?.pause(); setProjectId(event.target.value); setSelectedIndex(0);
         setDocument(current => current ? { ...current, filePath: undefined } : null);
@@ -268,7 +322,7 @@ export function App() {
             const added: Video = { id: crypto.randomUUID(), name: imported.name.trim().slice(0, 200) || `Video ${ordered.length + 1}`, media: imported.media, ...metadata, cues: [] };
             setCatalog(current => ({ ...current, videos: [...current.videos, added], projects: current.projects.map(p => p.id === project.id ? { ...p, videos: [...p.videos, added.id] } : p) }));
             setSelectedIndex(ordered.length); setCueId(''); setTime(0);
-          })}>Add video</button></div>
+          }, false)}>Add video</button></div>
           <p className="panel-caption">Playback order. Drag rows to reorder.</p>
           <div className="video-list-area" ref={listArea}>
             <ol className="video-list">
@@ -303,7 +357,7 @@ export function App() {
         </aside>
         <main className="editor-panel">
           {video ? <>
-            <div className="video-heading"><button disabled={busy} onClick={() => void play([video])}>Play this video</button>
+            <div className="video-heading"><button disabled={busy || !!presentation} onClick={() => void play([video], selectedIndex)}>Play this video</button>
               <label><span>Video {selectedIndex + 1}</span><input aria-label="Video name" value={video.name} disabled={busy} maxLength={200} onChange={event => updateVideo({ name: event.target.value })} /></label>
               <button className="notes-toggle" disabled={busy} aria-expanded={notesOpen} aria-controls="presenter-notes" onClick={() => setNotesOpen(!notesOpen)}>Presenter notes</button></div>
             <div className="preview-layout" ref={previewLayout}>
@@ -372,7 +426,7 @@ export function App() {
           </> : <div className="empty"><h2>Add your first video</h2><p>A project contains all the videos in your demo, in playback order.<br />Use Add video to start, then place pause points on the timeline.</p></div>}
         </main>
       </div>
-      <footer><span>Space: pause/resume &middot; Ctrl+Space: playback controls &middot; Esc: editor</span><span title={document?.filePath}>{document?.filePath ? 'Project file includes videos' : 'Save creates one portable project file'}</span></footer>
+      <footer><span>{presentation ? 'Space: audience playback outside editor controls / Esc: stop presenting' : <>Space: pause/resume &middot; Ctrl+Space: playback controls &middot; Esc: editor</>}</span><span title={document?.filePath}>{document?.filePath ? 'Project file includes videos' : 'Save creates one portable project file'}</span></footer>
     </> : !busy && <main className="welcome"><div><h2>Your demo, one project.</h2><p>Add videos, arrange them, and place pauses.<br />Move your real mouse while presenting at your own pace.</p>
       <div className="row"><button className="primary" disabled={busy} onClick={() => void newProject()}>Create a project</button><button disabled={busy} onClick={() => void openProject()}>Open a project file</button></div>
       <p className="muted">One .demosim file holds your videos, their order, and all pause points.</p>
@@ -385,9 +439,10 @@ export function App() {
       <p>Marker keyboard: Left/Right moves 33 ms; Shift moves 1 second; Delete removes it. Escape cancels a marker drag. Frame stepping is approximate.</p>
       <p>Play/Pause or clicking the preview controls editor playback, including authored pauses. Reset stops and returns to the beginning. Arrowheads step approximately one frame. Click outside a marker or its inspector to clear the selection.</p>
       <p>Presenter notes opens the notes editor beside the video. Drag its left divider to resize; the width is remembered across runs. Notes follow the latest pause reached by the playhead, or Video default before the first pause. Choose a notes entry to seek to it; type to customize a pause, or check Use video default to reset it. Notes are saved in the project file and hidden by default during presentation.</p>
-      <p>Play project starts with the first video paused. Space pauses/resumes; Enter or click resumes. At the end, Space loads the next video paused, and another Space starts it. Switching away pauses. Escape returns to the editor.</p>
+      <p>Play project starts with the first video paused. Space pauses/resumes; Enter or click resumes. At the end, Space starts the next video. The final video stays on its last frame. Switching away pauses. Escape returns to the editor.</p>
+      <p>Choose another Presentation display for audience-only fullscreen video. Your editor stays available with a private live preview, controls, pause/end status, and notes. Edits affect the next presentation, not the current one. Use an extended desktop, not mirrored displays. Space controls the audience when not editing text; Stop presenting or Escape closes the audience window. Stopping after a video ends selects the next video in the editor, or stays on the final video.</p>
       <p>Ctrl+Space pauses and slides open playback controls. Scrub the timeline, choose a pause, go to the previous pause, or return to the start. Play or Space resumes and hides the controls. Ctrl+Space closes them without resuming.</p>
-      <p>During presentation, hold the mouse at the bottom edge for one second to open the timeline, or at the right edge to show the matching notes. Either pauses playback. Hover-opened panels hide when the pointer leaves, without resuming. Play or Space resumes and hides them. Opened notes are visible on the presentation screen.</p>
+      <p>During presentation, hold the mouse at the bottom edge for half a second to open the timeline, or at the right edge to show the matching notes. Either pauses playback. Hover-opened panels hide when the pointer moves away, without resuming. Play or Space resumes and hides them. Opened notes are visible on the presentation screen.</p>
       <p className="muted">Use cursor-free recordings. Recorded-cursor removal is not included.</p>
       <button className="text-button" disabled={busy} onClick={() => { setHelp(false); void openProject(true); }}>Open a previous-version workspace...</button>
     </dialog>}

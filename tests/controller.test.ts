@@ -1,9 +1,13 @@
 import { describe, expect, it, vi } from 'vitest';
-import { PlaybackController, inputAction } from '../src/renderer/player/controller';
+import { PlaybackController, inputAction, selectionAfterPlayback } from '../src/renderer/player/controller';
 import type { Video } from '../src/shared/model';
 
 class FakeVideo extends EventTarget {
-  currentTime = 0; duration = 5; seeking = false;
+  private time = 0;
+  duration = 5; seeking = false; ended = false;
+  get currentTime() { return this.time; }
+  set currentTime(value: number) { this.time = value; this.ended = false; }
+  end() { this.currentTime = this.duration; this.ended = true; this.dispatchEvent(new Event('ended')); }
   pause = vi.fn();
   play = vi.fn(() => Promise.resolve());
   requestVideoFrameCallback = vi.fn(() => 1);
@@ -15,23 +19,123 @@ const projects = [
 ] as Video[];
 function setup() {
   const video = new FakeVideo();
-  const load = vi.fn();
+  const load = vi.fn(() => { video.currentTime = 0; });
   const c = new PlaybackController(video as unknown as HTMLVideoElement, projects, () => {}, load, () => true);
   c.start(); video.dispatchEvent(new Event('loadeddata'));
   return { video, c, load };
 }
 describe('presenter transitions', () => {
-  it('requires Space then another input to load and start the next item; final never loops', async () => {
+  it('holds the actual end instead of rewinding to a cue on the final time update', async () => {
+    const { c, video, load } = setup();
+    await c.input('space');
+    video.currentTime = video.duration; video.ended = true;
+    video.dispatchEvent(new Event('timeupdate'));
+    expect(video.currentTime).toBe(video.duration);
+    expect(c.state).toBe('item-ended');
+    video.dispatchEvent(new Event('ended'));
+    await c.input('space');
+    expect(c.index).toBe(1);
+    expect(load).toHaveBeenLastCalledWith(projects[1]);
+    video.dispatchEvent(new Event('loadeddata'));
+    expect(c.state).toBe('playing');
+    expect(video.play).toHaveBeenCalledTimes(2);
+    c.dispose();
+  });
+  it('captures native video end when stopping before the ended event is delivered', async () => {
+    const { c, video } = setup();
+    await c.input('space');
+    video.currentTime = video.duration; video.ended = true; c.blur();
+    expect(c.result).toEqual({ index: 0, state: 'item-ended' });
+    expect(video.play).toHaveBeenCalledTimes(1);
+    c.dispose();
+  });
+  it('starts the next item on one Space at the end; final never loops', async () => {
     const { c, video, load } = setup();
     expect(c.state).toBe('ready');
     await c.input('space'); expect(c.state).toBe('playing');
-    video.dispatchEvent(new Event('ended')); expect(c.state).toBe('item-ended');
+    video.end(); expect(c.state).toBe('item-ended');
     await c.input('enter'); await c.input('click'); expect(load).toHaveBeenCalledTimes(1);
     await c.input('space'); expect(c.state).toBe('loading'); expect(c.index).toBe(1);
-    video.dispatchEvent(new Event('loadeddata')); expect(c.state).toBe('ready');
-    await c.input('space'); video.dispatchEvent(new Event('ended'));
+    video.dispatchEvent(new Event('loadeddata')); expect(c.state).toBe('playing');
+    video.end();
     expect(c.state).toBe('playlist-ended');
     await c.input('space'); expect(c.index).toBe(1);
+    c.dispose();
+  });
+  it('cancels next-video autoplay when focus is lost while the next video loads', async () => {
+    const { c, video } = setup();
+    await c.input('space'); video.end(); await c.input('space');
+    c.blur();
+    video.dispatchEvent(new Event('loadeddata'));
+    expect(c.index).toBe(1);
+    expect(c.state).toBe('ready');
+    expect(video.play).toHaveBeenCalledTimes(1);
+    c.refocus();
+    expect(c.state).toBe('ready');
+    await c.input('space');
+    expect(c.state).toBe('playing');
+    c.dispose();
+  });
+  describe('editor selection after presenting', () => {
+    it('advances only after an ended video and stays on the final video', () => {
+      const videos = ['first', 'second'];
+      expect(selectionAfterPlayback(videos, videos, 0, false)).toBe(0);
+      expect(selectionAfterPlayback(videos, videos, 0, true)).toBe(1);
+      expect(selectionAfterPlayback(videos, videos, 1, true)).toBe(1);
+    });
+    it('matches the snapshot video after live editor reordering, without selecting a removed video', () => {
+      expect(selectionAfterPlayback(['first', 'second'], ['second', 'first'], 0, true)).toBe(0);
+      expect(selectionAfterPlayback(['first', 'second'], ['second', 'first'], 0, false)).toBe(1);
+      expect(selectionAfterPlayback(['first', 'second'], ['first'], 0, true)).toBeNull();
+    });
+    it('preserves distinct positions for repeated videos in an unchanged project', () => {
+      expect(selectionAfterPlayback(['first', 'first', 'second'], ['first', 'first', 'second'], 0, true)).toBe(1);
+    });
+  });
+  it.each(['focus', 'controls'])('preserves the end of an item when %s pauses before the ended event', async source => {
+    const { c, video, load } = setup();
+    await c.input('space');
+    video.currentTime = video.duration; video.ended = true;
+    if (source === 'focus') c.blur(); else c.pause('manually-paused');
+    video.dispatchEvent(new Event('ended'));
+    expect(c.state).toBe('item-ended');
+    if (source === 'focus') {
+      await c.input('space');
+      expect(c.index).toBe(0);
+      c.refocus();
+    }
+    await c.input('space');
+    expect(c.index).toBe(1);
+    expect(load).toHaveBeenLastCalledWith(projects[1]);
+    expect(video.play).toHaveBeenCalledTimes(1);
+    c.dispose();
+  });
+  it('advances before a delayed ended event and ignores that event after the next item loads', async () => {
+    const { c, video, load } = setup();
+    await c.input('space');
+    video.currentTime = video.duration; video.ended = true;
+    c.blur(); c.refocus();
+    await c.input('space');
+    expect(c.index).toBe(1);
+    expect(load).toHaveBeenLastCalledWith(projects[1]);
+    video.dispatchEvent(new Event('loadeddata'));
+    video.dispatchEvent(new Event('ended'));
+    expect(c.state).toBe('playing');
+    video.end();
+    expect(c.state).toBe('playlist-ended');
+    c.dispose();
+  });
+  it('never restarts the final item when focus interrupts its ended event', async () => {
+    const { c, video } = setup();
+    await c.input('space'); video.end(); await c.input('space');
+    video.dispatchEvent(new Event('loadeddata'));
+    video.currentTime = video.duration; video.ended = true;
+    c.blur(); c.refocus();
+    const plays = video.play.mock.calls.length;
+    await c.input('space');
+    expect(c.state).toBe('playlist-ended');
+    expect(c.index).toBe(1);
+    expect(video.play).toHaveBeenCalledTimes(plays);
     c.dispose();
   });
   it('consumes a crossed cue and does not fire it again after resuming', async () => {
@@ -124,7 +228,7 @@ describe('presenter transitions', () => {
   it('allows restarting an ended video without advancing the project and clamps navigation', async () => {
     const { c, video, load } = setup();
     await c.input('space');
-    video.currentTime = 5; video.dispatchEvent(new Event('ended'));
+    video.end();
     expect(c.state).toBe('item-ended');
     c.seek(-1); video.dispatchEvent(new Event('seeked'));
     expect(c.state).toBe('manually-paused');
