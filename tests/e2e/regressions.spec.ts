@@ -69,13 +69,12 @@ async function startAudience(button = 'Play project') {
   return audience;
 }
 async function focusSpeaker() {
-  await app.evaluate(({ BrowserWindow }) => {
+  await expect.poll(() => app.evaluate(({ BrowserWindow }) => {
     const speaker = BrowserWindow.getAllWindows().find(window => !window.webContents.getURL().includes('audience=1'))!;
     speaker.focus(); speaker.webContents.focus();
-  });
+    return speaker.isFocused();
+  })).toBe(true);
   await expect.poll(() => page.evaluate(() => document.hasFocus())).toBe(true);
-  await expect.poll(() => app.evaluate(({ BrowserWindow }) =>
-    BrowserWindow.getAllWindows().some(window => !window.webContents.getURL().includes('audience=1') && window.isFocused()))).toBe(true);
 }
 test('second-monitor presentation keeps notes private, freezes edits, and advances editor selection on stop', async () => {
   await importPlaybackVideo();
@@ -204,10 +203,10 @@ test('second-monitor snapshot media survives changing projects and is cleaned up
   const controls = page.getByRole('region', { name: 'Audience presentation', exact: true });
   await page.getByRole('button', { name: 'New project', exact: true }).click();
   await expect(page.locator('.video-list li')).toHaveCount(0);
-  await focusSpeaker();
   await expect(controls).toBeVisible();
   await fs.access(source);
   await audience.locator('.stage video').evaluate((video: HTMLVideoElement) => { video.playbackRate = 8; });
+  await focusSpeaker();
   await controls.getByRole('button', { name: 'Resume presentation', exact: true }).click();
   await expect(stage).toHaveAttribute('data-state', 'item-ended');
   await controls.getByRole('button', { name: 'Next presentation video', exact: true }).click();
@@ -1014,7 +1013,10 @@ test(`final media update cannot rewind to an unconsumed cue and one resume start
   if (external) await page.getByRole('button', { name: 'Resume presentation', exact: true }).click();
   else await page.keyboard.press('Space');
   await expect(stage).toHaveAttribute('data-state', 'playing');
-  await video.evaluate((element: HTMLVideoElement) => { element.currentTime = element.duration; });
+  await video.evaluate((element: HTMLVideoElement) => {
+    element.currentTime = element.duration;
+    element.dispatchEvent(new Event('timeupdate'));
+  });
   await expect(stage).toHaveAttribute('data-state', 'item-ended');
   await expect(video).toHaveJSProperty('ended', true);
   expect(await video.evaluate((element: HTMLVideoElement) => element.currentTime)).toBe(5);

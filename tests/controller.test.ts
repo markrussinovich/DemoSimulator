@@ -25,6 +25,26 @@ function setup() {
   return { video, c, load };
 }
 describe('presenter transitions', () => {
+  it('does not process pause points while a native seek is unsettled', async () => {
+    const { c, video } = setup();
+    await c.input('space');
+    video.currentTime = 2; video.seeking = true;
+    video.dispatchEvent(new Event('timeupdate'));
+    expect(c.state).toBe('playing');
+    expect(video.currentTime).toBe(2);
+    c.dispose();
+  });
+  it('waits for native end without rewinding when time reaches duration before ended becomes true', async () => {
+    const { c, video } = setup();
+    await c.input('space');
+    video.currentTime = video.duration;
+    video.dispatchEvent(new Event('timeupdate'));
+    expect(c.state).toBe('playing');
+    expect(video.currentTime).toBe(video.duration);
+    video.end();
+    expect(c.state).toBe('item-ended');
+    c.dispose();
+  });
   it('holds the actual end instead of rewinding to a cue on the final time update', async () => {
     const { c, video, load } = setup();
     await c.input('space');

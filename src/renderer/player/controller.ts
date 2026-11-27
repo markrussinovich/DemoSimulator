@@ -175,6 +175,8 @@ export class PlaybackController {
   private checkCue(time: number) {
     if (this.state !== 'playing') return;
     if (this.video.ended) { this.finishEndedItem(); return; }
+    // Native seeks can expose the final time before the ended flag is updated.
+    if (this.video.seeking || this.video.currentTime >= this.video.duration) return;
     const cues = [...this.projects[this.index].cues].sort((a, b) => a.time - b.time);
     const point = cues[this.cue];
     if (point && time >= point.time) {
